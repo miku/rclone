@@ -1,9 +1,56 @@
-package ia
+// Package vault add support for the Internet Archive Vault Digital
+// Preservation System. Learn more at https://archive.org and
+// https://archive-it.org/.
+//
+// This is very much exploratory at this point.
+//
+// Options to consider:
+//
+// A: Instead of implementing a specific vault handler, we could provide an S3
+// like API in vault and let people use the existing S3 adapter, just changing
+// URL and credentials.
+//
+// Object mapping:
+//
+//     Vault          S3
+//
+//     Organization   User
+//     Collection     Bucket
+//     Folder         Path
+//     File           Path
+//
+// What is missing here is an S3 adapter in vault. Or an S3 component that
+// talks to the Vault database.
+//
+// E.g. vault-s3-server -c vault-s3.ini
+//
+// Would need looks and would probably duplicate some effort across vault
+// proper and s3 server.
+//
+// B: Create a separate "vault" provider.
+//
+// Could use the same terminology, e.g. organization, collection. Would talk
+// directly to the API, less or no duplication.
+//
+// By means of rclone could still do things like rclone from S3 -> vault or
+// vault -> gcp, etc.
+//
+// Overall more integrated, less dependency on an existing protocol. Could
+// surface extra functionality unique to vault.
+//
+// Prototype:
+//
+// * [ ] read-only interface
+//
+package vault
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -13,41 +60,59 @@ import (
 )
 
 func init() {
-	fsi := &fs.RegInfo{
-		Name:        "Internet Archive",
-		Prefix:      "ia",
-		Description: "Internet Archive Storage",
+	fs.Register(&fs.RegInfo{
+		Name:        "vault",
+		Description: "Internet Archive Vault Digital Preservation System",
+		Prefix:      "vault",
 		NewFs:       NewFs,
-		Options:     []fs.Option{},
-	}
-	fs.Register(fsi)
+		Options: []fs.Option{
+			{
+				Name:    "organization",
+				Help:    fmt.Sprintf(`The vault identifier of your organization`),
+				Default: 0,
+			},
+			{
+				Name:    "collection",
+				Help:    fmt.Sprintf(`The identifier of the collection for data transfer`),
+				Default: 0,
+			},
+			{
+				Name:    "url",
+				Help:    fmt.Sprintf(`base URL of vault service`),
+				Default: "http://localhost:8000",
+			},
+		},
+	})
 }
 
 func NewFs(ctx context.Context, _, _ string, cm configmap.Mapper) (fs.Fs, error) {
 	// The name and root are omitted, as there is only one Internet Archive
 	// with a single namespace.
 	return &Fs{
-		Name:        "Internet Archive",
-		Description: "Internet Archive Storage",
-		Root:        "/",
+		name:        "Internet Archive Vault",
+		root:        "/",
+		baseURL:     "http://localhost:8000",
+		Description: "Internet Archive Vault Digital Preservation System",
 	}, nil
 }
 
 // Fs represents Internet Archive collections and items.
 type Fs struct {
-	Name        string
-	Description string
-	Root        string
+	Description  string
+	name         string
+	root         string
+	organization int    // vault organization id
+	baseURL      string // e.g. http://localhost:8000
 }
 
 // Name of the remote (as passed into NewFs)
 func (f *Fs) Name() string {
-	return f.Name
+	return f.name
 }
 
 // Root of the remote (as passed into NewFs)
 func (f *Fs) Root() string {
-	return f.Root
+	return f.root
 }
 
 // String returns a description of the FS
@@ -62,7 +127,7 @@ func (f *Fs) Precision() time.Duration {
 
 // Returns the supported hash types of the filesystem
 func (f *Fs) Hashes() hash.Set {
-	return hash.ErrUnsupported
+	return hash.Set(hash.None)
 }
 
 // Features returns the optional features of this Fs.
@@ -72,7 +137,7 @@ func (f *Fs) Features() *fs.Features {
 	}
 }
 
-func (f *Fs) listRoot(ctx context.Context) (entries DirEntries, err error) {
+func (f *Fs) listRoot(ctx context.Context) (entries fs.DirEntries, err error) {
 	return nil, nil
 }
 
@@ -82,20 +147,21 @@ func (f *Fs) listRoot(ctx context.Context) (entries DirEntries, err error) {
 //
 // If dir is an items, return all files in the item. If dir is a collection,
 // return both files, collections and items.
-func (f *Fs) List(ctx context.Context, dir string) (entries DirEntries, err error) {
-	// List the objects and directories in dir into entries.  The
-	// entries can be returned in any order but should be for a
-	// complete directory.
-	//
-	// dir should be "" to list the root, and should not have
-	// trailing slashes.
-	//
-	// This should return ErrDirNotFound if the directory isn't
-	// found.
-	if dir == "" {
-		return f.listRoot(ctx)
-	}
-}
+// func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err error) {
+// 	// List the objects and directories in dir into entries.  The
+// 	// entries can be returned in any order but should be for a
+// 	// complete directory.
+// 	//
+// 	// dir should be "" to list the root, and should not have
+// 	// trailing slashes.
+// 	//
+// 	// This should return ErrDirNotFound if the directory isn't
+// 	// found.
+// 	if dir == "" {
+// 		return f.listRoot(ctx)
+// 	}
+// 	return nil, nil
+// }
 
 // NewObject finds the Object at remote.  If it can't be found
 // it returns the error ErrorObjectNotFound.
@@ -136,11 +202,46 @@ func (f *Fs) List(ctx context.Context, dir string) (entries DirEntries, err erro
 // This should return ErrDirNotFound if the directory isn't
 // found.
 func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err error) {
-	log.Println("List")
-	entries = append(entries,
-		&DummyFile{Name: "dummy file 1"}, // not yet an "Object" or "Directory"
-		&DummyFile{Name: "dummy file 2"},
-	)
+	// curl -s http://127.0.0.1:8000/api/collections | jq -r .
+	// {
+	//   "collections": [
+	//     {
+	//       "id": 2,
+	//       "name": "ABC 1234-5678"
+	//     },
+	//     {
+	//       "id": 4,
+	//       "name": "Example"
+	//     },
+	//     {
+	//       "id": 3,
+	//       "name": "XYZ 2345-8912"
+	//     }
+	//   ]
+	// }
+	link := fmt.Sprintf("%s/api/collections", f.baseURL)
+	resp, err := http.Get(link)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var payload struct {
+		Collections []struct {
+			Id   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"collections"`
+	}
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&payload); err != nil {
+		return nil, err
+	}
+	for _, c := range payload.Collections {
+		entries = append(entries, &DummyFile{Name: c.Name})
+	}
+	// 	entries = append(entries,
+	// 		&DummyFile{Name: "dummy file 1"}, // not yet an "Object" or "Directory"
+	// 		&DummyFile{Name: "dummy file 2"},
+	// 	)
 	return entries, nil
 }
 
