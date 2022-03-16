@@ -20,7 +20,9 @@
 //             File
 //             ...
 //
+//
 // Possible config file
+// --------------------
 //
 // [vault]
 //
@@ -31,7 +33,15 @@
 // Config parameters are prefixed by the storage type, e.g. vault-username,
 // vault-endpoint, ...
 //
+// User organization is 1:1 (optional). So given a user, we should have one
+// treenode hierarchy rooted at the organization.
+//
+// Auth is currently handled via Remote User
+// (https://docs.djangoproject.com/en/4.0/howto/auth-remote-user/).
+//
+//
 // Some possible features
+// ----------------------
 //
 // $ rclone link vault:/collection1/folder1/file1 -> http://archive.org/...
 //
@@ -39,6 +49,7 @@
 //
 //
 // Options to consider
+// -------------------
 //
 // A: Instead of implementing a specific vault handler, we could provide an S3
 // like API in vault and let people use the existing S3 adapter, just changing
@@ -75,7 +86,8 @@
 // Prototype:
 //
 // * [ ] read-only interface
-//
+// * [ ] add a new collection
+// * [ ] add new folders and files
 package vault
 
 import (
