@@ -88,6 +88,7 @@
 // * [ ] read-only interface
 // * [ ] add a new collection
 // * [ ] add new folders and files
+//
 package vault
 
 import (
@@ -113,8 +114,8 @@ func init() {
 		NewFs:       NewFs,
 		Options: []fs.Option{
 			{
-				Name:    "organization",
-				Help:    "vault identifier of your organization",
+				Name:    "username",
+				Help:    "vault username (needs to belong to an organization to be usable)",
 				Default: 0,
 			},
 			{
@@ -139,21 +140,20 @@ func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, 
 		return nil, fmt.Errorf("missing organization id")
 	}
 	return &Fs{
-		name:         name,
-		root:         root,
-		baseURL:      "http://localhost:8000",
-		description:  "Internet Archive Vault Digital Preservation System",
-		organization: organization,
+		name:        name,
+		root:        root,
+		baseURL:     "http://localhost:8000",
+		description: "Internet Archive Vault Digital Preservation System",
 	}, nil
 }
 
 // Fs represents Internet Archive collections and items.
 type Fs struct {
-	description  string
-	name         string
-	root         string
-	organization string // vault organization id
-	baseURL      string // e.g. http://localhost:8000
+	description string
+	name        string
+	root        string
+	username    string // user name (may only need this)
+	baseURL     string // e.g. http://localhost:8000
 }
 
 // Name of the remote (as passed into NewFs)
@@ -263,27 +263,14 @@ func (f *Fs) Features() *fs.Features {
 // This should return ErrDirNotFound if the directory isn't
 // found.
 func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err error) {
-	// curl -s http://127.0.0.1:8000/api/collections | jq -r .
-	// {
-	//   "collections": [
-	//     {
-	//       "id": 2,
-	//       "name": "ABC 1234-5678"
-	//     },
-	//     {
-	//       "id": 4,
-	//       "name": "Example"
-	//     },
-	//     {
-	//       "id": 3,
-	//       "name": "XYZ 2345-8912"
-	//     }
-	//   ]
-	// }
 	//
-
-	// GET
-	// /vault/api/collections/?name__contains=&name__endswith=&name=&name__icontains=&name__iexact=&name__startswith=&organization=1&target_replication=&target_replication__gt=&target_replication__gte=&target_replication__lt=&target_replication__lte=&fixity_frequency__contains=&fixity_frequency__endswith=&fixity_frequency=&fixity_frequency__icontains=&fixity_frequency__iexact=&fixity_frequency__startswith=&tree_node=
+	// dir      action
+	// ---------------
+	// ""       find ORG treenode (for user); then all item having that ORG as parent (mostly collections)
+	// "/"      same as ""
+	// "/a"     find collection named "a"
+	// "/a/b"   find collection named "a", and find all parents
+	// "/a/b/c" find collection named "a", parent "a" and name "b", parent "b" and "c"
 
 	log.Printf("List: %s", dir)
 
