@@ -304,6 +304,13 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 	return entries, nil
 }
 
+func (f *Fs) list(ctx context.Context, dir string) (entries fs.DirEntries, err error) {
+	// [ ] org for username; http://127.0.0.1:8000/api/users/?last_login=&last_login__gt=&last_login__gte=&last_login__lt=&last_login__lte=&username__contains=&username__endswith=&username=admin&username__icontains=&username__iexact=&username__startswith=&first_name__contains=&first_name__endswith=&first_name=&first_name__icontains=&first_name__iexact=&first_name__startswith=&last_name__contains=&last_name__endswith=&last_name=&last_name__icontains=&last_name__iexact=&last_name__startswith=&date_joined=&date_joined__gt=&date_joined__gte=&date_joined__lt=&date_joined__lte=&organization=
+	// [ ] treenode for org
+
+	return nil, nil
+}
+
 // Collection represents an internet archive collection. This is similar to a
 // bucket or a directory, which can contain many collections or items.
 type Collection struct{}
