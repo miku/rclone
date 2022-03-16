@@ -1,10 +1,44 @@
-// Package vault add support for the Internet Archive Vault Digital
+// Package vault adds support for the Internet Archive Vault Digital
 // Preservation System. Learn more at https://archive.org and
 // https://archive-it.org/.
 //
 // This is very much exploratory at this point.
 //
-// Options to consider:
+// Concepts in Vault
+//
+//     User -- Organization
+//
+//     Organization
+//         Collection
+//             File
+//             Folder
+//                 Folder
+//                 File
+//                 ...
+//             ...
+//         Collection
+//             File
+//             ...
+//
+// Possible config file
+//
+// [vault]
+//
+// username = admin
+// password = ....
+// endpoint = http://localhost:8000
+//
+// Config parameters are prefixed by the storage type, e.g. vault-username,
+// vault-endpoint, ...
+//
+// Some possible features
+//
+// $ rclone link vault:/collection1/folder1/file1 -> http://archive.org/...
+//
+// Like: https://rclone.org/b2/#b2-and-rclone-link
+//
+//
+// Options to consider
 //
 // A: Instead of implementing a specific vault handler, we could provide an S3
 // like API in vault and let people use the existing S3 adapter, just changing
@@ -68,40 +102,45 @@ func init() {
 		Options: []fs.Option{
 			{
 				Name:    "organization",
-				Help:    fmt.Sprintf(`The vault identifier of your organization`),
+				Help:    "vault identifier of your organization",
 				Default: 0,
 			},
 			{
 				Name:    "collection",
-				Help:    fmt.Sprintf(`The identifier of the collection for data transfer`),
+				Help:    "identifier of the collection for data transfer",
 				Default: 0,
 			},
 			{
 				Name:    "url",
-				Help:    fmt.Sprintf(`base URL of vault service`),
+				Help:    "base URL of vault service",
 				Default: "http://localhost:8000",
 			},
 		},
 	})
 }
 
-func NewFs(ctx context.Context, _, _ string, cm configmap.Mapper) (fs.Fs, error) {
+func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, error) {
 	// The name and root are omitted, as there is only one Internet Archive
 	// with a single namespace.
+	organization, ok := cm.Get("organization")
+	if !ok {
+		return nil, fmt.Errorf("missing organization id")
+	}
 	return &Fs{
-		name:        "Internet Archive Vault",
-		root:        "/",
-		baseURL:     "http://localhost:8000",
-		Description: "Internet Archive Vault Digital Preservation System",
+		name:         name,
+		root:         root,
+		baseURL:      "http://localhost:8000",
+		description:  "Internet Archive Vault Digital Preservation System",
+		organization: organization,
 	}, nil
 }
 
 // Fs represents Internet Archive collections and items.
 type Fs struct {
-	Description  string
+	description  string
 	name         string
 	root         string
-	organization int    // vault organization id
+	organization string // vault organization id
 	baseURL      string // e.g. http://localhost:8000
 }
 
@@ -117,7 +156,7 @@ func (f *Fs) Root() string {
 
 // String returns a description of the FS
 func (f *Fs) String() string {
-	return f.Description
+	return f.description
 }
 
 // Precision of the ModTimes in this Fs.
@@ -127,19 +166,29 @@ func (f *Fs) Precision() time.Duration {
 
 // Returns the supported hash types of the filesystem
 func (f *Fs) Hashes() hash.Set {
-	return hash.Set(hash.None)
+	return hash.Set(hash.MD5 | hash.SHA1 | hash.SHA256)
 }
 
 // Features returns the optional features of this Fs.
 func (f *Fs) Features() *fs.Features {
 	return &fs.Features{
-		CaseInsensitive: true,
+		CaseInsensitive:         true,
+		DuplicateFiles:          false,
+		CanHaveEmptyDirectories: true,
+		BucketBased:             true,
+		BucketBasedRootOK:       true,
+		SetTier:                 false,
+		GetTier:                 false,
+		ServerSideAcrossConfigs: true,
+		IsLocal:                 false,
+		SlowModTime:             true,
+		SlowHash:                true,
 	}
 }
 
-func (f *Fs) listRoot(ctx context.Context) (entries fs.DirEntries, err error) {
-	return nil, nil
-}
+// func (f *Fs) listRoot(ctx context.Context) (entries fs.DirEntries, err error) {
+// 	return nil, nil
+// }
 
 // List lists entries. If dir is a root, we would need to iterate over too many
 // entries, basically all collection names and all top level items. We need a
@@ -219,12 +268,23 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 	//     }
 	//   ]
 	// }
-	link := fmt.Sprintf("%s/api/collections", f.baseURL)
+	//
+
+	// GET
+	// /vault/api/collections/?name__contains=&name__endswith=&name=&name__icontains=&name__iexact=&name__startswith=&organization=1&target_replication=&target_replication__gt=&target_replication__gte=&target_replication__lt=&target_replication__lte=&fixity_frequency__contains=&fixity_frequency__endswith=&fixity_frequency=&fixity_frequency__icontains=&fixity_frequency__iexact=&fixity_frequency__startswith=&tree_node=
+
+	log.Printf("List: %s", dir)
+
+	link := fmt.Sprintf("%s/api/collections/?organization=%s", f.baseURL, f.organization)
+	log.Println(link)
 	resp, err := http.Get(link)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("failed to list directory: %s", dir)
+	}
 	var payload struct {
 		Collections []struct {
 			Id   int64  `json:"id"`
