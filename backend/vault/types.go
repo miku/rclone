@@ -3,6 +3,8 @@ package vault
 // TODO: we may need to get all results for a given query.
 // TODO: add pagination later
 // TODO: add a few convenience methods for the api
+// TODO: could use a "dircache" locally to speed up operations (with some low
+// ttl, like 60s)
 import (
 	"encoding/json"
 	"errors"
@@ -64,35 +66,28 @@ func (api *Api) root() (*TreeNode, error) {
 }
 
 // ResolvePath takes a path and turns it into a TreeNode representing that
-// object (org, collection, folder, file).
+// object (org, collection, folder, file). A path is case sensitive.
 func (api *Api) ResolvePath(path string) (*TreeNode, error) {
 	t, err := api.root()
 	if err != nil {
 		return nil, err
 	}
-	fields := []string{"name__iexact", "name"}
 	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
 	segments := strings.Split(strings.TrimRight(path, "/"), "/")[1:]
 	for len(segments) > 0 {
-		for i, field := range fields {
-			ts, err := api.FindTreeNodes(url.Values{
-				"parent": []string{fmt.Sprintf("%d", t.Id)},
-				field:    []string{segments[0]}, // https://tinyurl.com/bde3kcr2
-			})
-			switch {
-			case err != nil:
-				return nil, err
-			case len(ts) == 0:
-				return nil, ErrPathNotFound
-			case len(ts) > 1:
-				if i < len(fields)-1 {
-					continue // try other field names first
-				}
-				return nil, ErrInvalidPath
-			}
-			t, segments = ts[0], segments[1:]
-			break
+		ts, err := api.FindTreeNodes(url.Values{
+			"parent": []string{fmt.Sprintf("%d", t.Id)},
+			"name":   []string{segments[0]},
+		})
+		switch {
+		case err != nil:
+			return nil, err
+		case len(ts) == 0:
+			return nil, ErrPathNotFound
+		case len(ts) > 1:
+			return nil, ErrInvalidPath
 		}
+		t, segments = ts[0], segments[1:]
 	}
 	return t, nil
 }
