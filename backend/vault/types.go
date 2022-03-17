@@ -5,14 +5,23 @@ package vault
 // TODO: add a few convenience methods for the api
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"strings"
+)
+
+var (
+	ErrPathNotFound = errors.New("path not found")
+	ErrInvalidPath  = errors.New("invalid path")
 )
 
 // Api handles all interactions with the vault API. TODO: handle auth for API.
 type Api struct {
 	Endpoint string // e.g. http://127.0.0.1:8000/api
+	Username string // vault username, required for various operations
 }
 
 // ApiError for allows to transmit HTTP code and message.
@@ -29,12 +38,12 @@ func (e *ApiError) Error() string {
 	}
 }
 
-// Root returns a list of treenodes at the root of the organization, i.e. these
-// will be collections and we can think of them as top level directories.
-//
-// We will need the username.
-func (api *Api) Root(vs url.Values) (result []*TreeNode, err error) {
-	userList, err := api.FindUsers(vs)
+// root returns the root treenode for the api user, that is their
+// organization's treenode.
+func (api *Api) root() (*TreeNode, error) {
+	userList, err := api.FindUsers(url.Values{
+		"username": []string{api.Username},
+	})
 	switch {
 	case err != nil:
 		return nil, err
@@ -51,8 +60,50 @@ func (api *Api) Root(vs url.Values) (result []*TreeNode, err error) {
 	if err != nil {
 		return nil, err
 	}
+	return api.GetTreeNode(organization.TreeNode)
+}
+
+// ResolvePath takes a path and turns it into a TreeNode representing that
+// object (org, collection, folder, file).
+func (api *Api) ResolvePath(path string) (*TreeNode, error) {
+	t, err := api.root()
+	if err != nil {
+		return nil, err
+	}
+	fields := []string{"name__iexact", "name"}
+	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
+	segments := strings.Split(strings.TrimRight(path, "/"), "/")[1:]
+	for len(segments) > 0 {
+		for i, field := range fields {
+			ts, err := api.FindTreeNodes(url.Values{
+				"parent_id": []string{fmt.Sprintf("%d", t.Id)},
+				field:       []string{segments[0]}, // https://tinyurl.com/bde3kcr2
+			})
+			switch {
+			case err != nil:
+				return nil, err
+			case len(ts) == 0:
+				return nil, ErrPathNotFound
+			case len(ts) > 1:
+				if i < len(fields)-1 {
+					continue // try other field names first
+				}
+				return nil, ErrInvalidPath
+			}
+			t, segments = ts[0], segments[1:]
+			break
+		}
+	}
+	return t, nil
+}
+
+// List list all children under a given treenode.
+func (api *Api) List(t *TreeNode) (result []*TreeNode, err error) {
+	if t == nil {
+		return
+	}
 	return api.FindTreeNodes(url.Values{
-		"parent_id": []string{organization.TreeNode},
+		"parent": []string{fmt.Sprintf("%d", t.Id)},
 	})
 }
 
@@ -70,6 +121,7 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 		link       = fmt.Sprintf("%s/users/?%s", api.Endpoint, vs.Encode())
 		resp, herr = http.Get(link) // move to pester or other retry library
 	)
+	log.Println(link)
 	if herr != nil {
 		return nil, herr
 	}
@@ -90,16 +142,23 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 	return result, nil
 }
 
-// GetOrganization returns a single organization by id.
+// GetOrganization returns a single organization by id. If id look like a URL,
+// use it directly.
 func (api *Api) GetOrganization(id string) (*Organization, error) {
-	var (
-		link      = fmt.Sprintf("%s/organizations/%s", api.Endpoint, id)
-		resp, err = http.Get(link) // move to pester or other retry library
-	)
+	var link string
+	if strings.HasPrefix(id, "http") {
+		link = id
+	} else {
+		link = fmt.Sprintf("%s/organizations/%s", api.Endpoint, id)
+	}
+	resp, err := http.Get(link) // move to pester or other retry library
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "organization"}
+	}
 	var (
 		dec = json.NewDecoder(resp.Body)
 		doc Organization
@@ -134,6 +193,32 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 		result = append(result, &v)
 	}
 	return result, nil
+}
+
+// GetTreeNode returns a single treenode by id.
+func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
+	var link string
+	if strings.HasPrefix(id, "http") {
+		link = id
+	} else {
+		link = fmt.Sprintf("%s/treenodes/%s", api.Endpoint, id)
+	}
+	resp, err := http.Get(link) // move to pester or other retry library
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "treenode"}
+	}
+	var (
+		dec = json.NewDecoder(resp.Body)
+		doc TreeNode
+	)
+	if err := dec.Decode(&doc); err != nil {
+		return nil, err
+	}
+	return &doc, nil
 }
 
 // FindTreeNodes finds treenodes, filtered by query parameters.
@@ -175,6 +260,7 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	for _, v := range list.Results {
 		result = append(result, &v)
 	}
+	// Any more results?
 	return result, nil
 }
 

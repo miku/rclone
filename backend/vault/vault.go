@@ -95,6 +95,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -130,6 +131,7 @@ func init() {
 }
 
 func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, error) {
+	log.Printf("NewFs: %s %s", name, root)
 	// The name and root are omitted, as there is only one Internet Archive
 	// with a single namespace.
 	return &Fs{
@@ -137,6 +139,11 @@ func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, 
 		root:        root,
 		baseURL:     "http://localhost:8000",
 		description: "Internet Archive Vault Digital Preservation System",
+		username:    "admin", // TODO: get this from config map
+		api: &Api{
+			Endpoint: "http://localhost:8000/api",
+			Username: "admin",
+		},
 	}, nil
 }
 
@@ -145,8 +152,10 @@ type Fs struct {
 	description string
 	name        string
 	root        string
-	username    string // user name (may only need this)
-	baseURL     string // e.g. http://localhost:8000
+	// Vault related fields.
+	username string // user name (may only need this)
+	baseURL  string // e.g. http://localhost:8000
+	api      *Api
 }
 
 // Name of the remote (as passed into NewFs)
@@ -156,6 +165,7 @@ func (f *Fs) Name() string {
 
 // Root of the remote (as passed into NewFs)
 func (f *Fs) Root() string {
+	log.Println("Root")
 	return f.root
 }
 
@@ -171,23 +181,25 @@ func (f *Fs) Precision() time.Duration {
 
 // Returns the supported hash types of the filesystem
 func (f *Fs) Hashes() hash.Set {
-	return hash.Set(hash.MD5 | hash.SHA1 | hash.SHA256)
+	return hash.Set(hash.None)
+	// return hash.Set(hash.MD5 | hash.SHA1 | hash.SHA256)
 }
 
 // Features returns the optional features of this Fs.
 func (f *Fs) Features() *fs.Features {
+	log.Println("Features")
 	return &fs.Features{
 		CaseInsensitive:         true,
-		DuplicateFiles:          false,
-		CanHaveEmptyDirectories: true,
-		BucketBased:             true,
-		BucketBasedRootOK:       true,
-		SetTier:                 false,
-		GetTier:                 false,
-		ServerSideAcrossConfigs: true,
 		IsLocal:                 false,
-		SlowModTime:             true,
+		CanHaveEmptyDirectories: true,
 		SlowHash:                true,
+		// DuplicateFiles:          false,
+		// CanHaveEmptyDirectories: true,
+		// BucketBased:             true,
+		// BucketBasedRootOK:       true,
+		// SetTier:                 false,
+		// GetTier:                 false,
+		// ServerSideAcrossConfigs: true,
 	}
 }
 
@@ -264,8 +276,23 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 	// "/a"     find collection named "a"
 	// "/a/b"   find collection named "a", and find all parents
 	// "/a/b/c" find collection named "a", parent "a" and name "b", parent "b" and "c"
+	full := filepath.Join(f.root, dir)
 
-	log.Printf("List: %s", dir)
+	log.Printf("List: %s", full)
+
+	t, err := f.api.ResolvePath(full)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("%v resolved to treenode %d: %v", full, t.Id, t)
+
+	tns, err := f.api.List(t)
+	if err != nil {
+		return nil, err
+	}
+	for _, tn := range tns {
+		log.Printf("%d\t%s\t%s", tn.Id, tn.NodeType, tn.Name)
+	}
 
 	// link := fmt.Sprintf("%s/api/collections/?organization=%s", f.baseURL, f.organization)
 	// log.Println(link)
@@ -290,10 +317,11 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 	// for _, c := range payload.Collections {
 	// 	entries = append(entries, &DummyFile{Name: c.Name})
 	// }
-	entries = append(entries,
-		&DummyFile{Name: "dummy file 1"}, // not yet an "Object" or "Directory"
-		&DummyFile{Name: "dummy file 2"},
-	)
+
+	// entries = append(entries,
+	// 	&DummyFile{Name: "dummy file 1"}, // not yet an "Object" or "Directory"
+	// 	&DummyFile{Name: "dummy file 2"},
+	// )
 	return entries, nil
 }
 
