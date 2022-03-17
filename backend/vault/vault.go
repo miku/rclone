@@ -93,11 +93,8 @@ package vault
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -135,10 +132,6 @@ func init() {
 func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, error) {
 	// The name and root are omitted, as there is only one Internet Archive
 	// with a single namespace.
-	organization, ok := cm.Get("organization")
-	if !ok {
-		return nil, fmt.Errorf("missing organization id")
-	}
 	return &Fs{
 		name:        name,
 		root:        root,
@@ -274,33 +267,33 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 
 	log.Printf("List: %s", dir)
 
-	link := fmt.Sprintf("%s/api/collections/?organization=%s", f.baseURL, f.organization)
-	log.Println(link)
-	resp, err := http.Get(link)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("failed to list directory: %s", dir)
-	}
-	var payload struct {
-		Collections []struct {
-			Id   int64  `json:"id"`
-			Name string `json:"name"`
-		} `json:"collections"`
-	}
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&payload); err != nil {
-		return nil, err
-	}
-	for _, c := range payload.Collections {
-		entries = append(entries, &DummyFile{Name: c.Name})
-	}
-	// 	entries = append(entries,
-	// 		&DummyFile{Name: "dummy file 1"}, // not yet an "Object" or "Directory"
-	// 		&DummyFile{Name: "dummy file 2"},
-	// 	)
+	// link := fmt.Sprintf("%s/api/collections/?organization=%s", f.baseURL, f.organization)
+	// log.Println(link)
+	// resp, err := http.Get(link)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// defer resp.Body.Close()
+	// if resp.StatusCode >= 400 {
+	// 	return nil, fmt.Errorf("failed to list directory: %s", dir)
+	// }
+	// var payload struct {
+	// 	Collections []struct {
+	// 		Id   int64  `json:"id"`
+	// 		Name string `json:"name"`
+	// 	} `json:"collections"`
+	// }
+	// dec := json.NewDecoder(resp.Body)
+	// if err := dec.Decode(&payload); err != nil {
+	// 	return nil, err
+	// }
+	// for _, c := range payload.Collections {
+	// 	entries = append(entries, &DummyFile{Name: c.Name})
+	// }
+	entries = append(entries,
+		&DummyFile{Name: "dummy file 1"}, // not yet an "Object" or "Directory"
+		&DummyFile{Name: "dummy file 2"},
+	)
 	return entries, nil
 }
 

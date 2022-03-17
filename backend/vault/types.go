@@ -15,6 +15,7 @@ type Api struct {
 	Endpoint string // e.g. http://127.0.0.1:8000/api
 }
 
+// ApiError for allows to transmit HTTP code and message.
 type ApiError struct {
 	StatusCode int
 	Message    string
@@ -22,9 +23,9 @@ type ApiError struct {
 
 func (e *ApiError) Error() string {
 	if e.StatusCode != 0 {
-		return fmt.Sprintf("api request failed with HTTP %d: %s", e.StatusCode, e.Message)
+		return fmt.Sprintf("api error: HTTP %d: %s", e.StatusCode, e.Message)
 	} else {
-		return fmt.Sprintf("api request failed: %s", e.StatusCode, e.Message)
+		return fmt.Sprintf("api error: %s", e.Message)
 	}
 }
 
@@ -37,15 +38,22 @@ func (api *Api) Root(vs url.Values) (result []*TreeNode, err error) {
 	switch {
 	case err != nil:
 		return nil, err
-	case len(userList.Results) == 0:
+	case len(userList) == 0:
 		return nil, &ApiError{Message: "no user found"}
-	case len(userList.Results) > 1:
+	case len(userList) > 1:
 		return nil, &ApiError{Message: "ambiguous user query"}
 	}
-	u := userList.Results[0]
+	u := userList[0]
 	if u.Organization == "" {
 		return nil, &ApiError{Message: "user does not belong to an organization"}
 	}
+	organization, err := api.GetOrganization(u.Organization)
+	if err != nil {
+		return nil, err
+	}
+	return api.FindTreeNodes(url.Values{
+		"parent_id": []string{organization.TreeNode},
+	})
 }
 
 // FindUsers finds users, filtered by query parameters.
@@ -59,15 +67,15 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 	// startswith=&date_joined=&date_joined__gt=&date_joined__gte=&date_joined__lt=&dat
 	// e_joined__lte=&organization=
 	var (
-		link      = fmt.Sprintf("%s/users/?%s", api.Endpoint, vs.Encode())
-		resp, err = http.Get(link) // move to pester or other retry library
+		link       = fmt.Sprintf("%s/users/?%s", api.Endpoint, vs.Encode())
+		resp, herr = http.Get(link) // move to pester or other retry library
 	)
-	if err != nil {
-		return nil, err
+	if herr != nil {
+		return nil, herr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, ApiError{StatusCode: resp.StatusCode, Message: "users"}
+		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "users"}
 	}
 	var (
 		dec  = json.NewDecoder(resp.Body)
@@ -77,23 +85,43 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 		return nil, err
 	}
 	for _, u := range list.Results {
-		result = append(result, u)
+		result = append(result, &u)
 	}
 	return result, nil
 }
 
-// FindOrganizations finds organizations, filtered by query parameters.
-func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err error) {
+// GetOrganization returns a single organization by id.
+func (api *Api) GetOrganization(id string) (*Organization, error) {
 	var (
-		link      = fmt.Sprintf("%s/organizations/?%s", api.Endpoint, vs.Encode())
+		link      = fmt.Sprintf("%s/organizations/%s", api.Endpoint, id)
 		resp, err = http.Get(link) // move to pester or other retry library
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	var (
+		dec = json.NewDecoder(resp.Body)
+		doc Organization
+	)
+	if err := dec.Decode(&doc); err != nil {
+		return nil, err
+	}
+	return &doc, nil
+}
+
+// FindOrganizations finds organizations, filtered by query parameters.
+func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err error) {
+	var (
+		link       = fmt.Sprintf("%s/organizations/?%s", api.Endpoint, vs.Encode())
+		resp, herr = http.Get(link) // move to pester or other retry library
+	)
+	if herr != nil {
+		return nil, herr
+	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, ApiError{StatusCode: resp.StatusCode, Message: "organizations"}
+		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "organizations"}
 	}
 	var (
 		dec  = json.NewDecoder(resp.Body)
@@ -102,8 +130,8 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 	if err := dec.Decode(&list); err != nil {
 		return nil, err
 	}
-	for _, u := range list.Results {
-		result = append(result, u)
+	for _, v := range list.Results {
+		result = append(result, &v)
 	}
 	return result, nil
 }
@@ -127,15 +155,15 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	// ified_at__lt=&modified_at__lte=&uploaded_by=&comment__contains=&comment__endswit
 	// h=&comment=&comment__icontains=&comment__iexact=&comment__startswith=&parent=
 	var (
-		link      = fmt.Sprintf("%s/treenodes/?%s", api.Endpoint, vs.Encode())
-		resp, err = http.Get(link) // move to pester or other retry library
+		link       = fmt.Sprintf("%s/treenodes/?%s", api.Endpoint, vs.Encode())
+		resp, herr = http.Get(link) // move to pester or other retry library
 	)
-	if err != nil {
-		return nil, err
+	if herr != nil {
+		return nil, herr
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, ApiError{StatusCode: resp.StatusCode, Message: "treenodes"}
+		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "treenodes"}
 	}
 	var (
 		dec  = json.NewDecoder(resp.Body)
@@ -144,8 +172,8 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	if err := dec.Decode(&list); err != nil {
 		return nil, err
 	}
-	for _, u := range list.Results {
-		result = append(result, u)
+	for _, v := range list.Results {
+		result = append(result, &v)
 	}
 	return result, nil
 }
