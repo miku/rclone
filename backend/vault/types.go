@@ -76,8 +76,8 @@ func (api *Api) ResolvePath(path string) (*TreeNode, error) {
 	for len(segments) > 0 {
 		for i, field := range fields {
 			ts, err := api.FindTreeNodes(url.Values{
-				"parent_id": []string{fmt.Sprintf("%d", t.Id)},
-				field:       []string{segments[0]}, // https://tinyurl.com/bde3kcr2
+				"parent": []string{fmt.Sprintf("%d", t.Id)},
+				field:    []string{segments[0]}, // https://tinyurl.com/bde3kcr2
 			})
 			switch {
 			case err != nil:
@@ -136,8 +136,8 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 	if err := dec.Decode(&list); err != nil {
 		return nil, err
 	}
-	for _, u := range list.Results {
-		result = append(result, &u)
+	for _, v := range list.Results {
+		result = append(result, v)
 	}
 	return result, nil
 }
@@ -190,7 +190,7 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 		return nil, err
 	}
 	for _, v := range list.Results {
-		result = append(result, &v)
+		result = append(result, v)
 	}
 	return result, nil
 }
@@ -243,6 +243,7 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 		link       = fmt.Sprintf("%s/treenodes/?%s", api.Endpoint, vs.Encode())
 		resp, herr = http.Get(link) // move to pester or other retry library
 	)
+	log.Println(link)
 	if herr != nil {
 		return nil, herr
 	}
@@ -258,7 +259,7 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 		return nil, err
 	}
 	for _, v := range list.Results {
-		result = append(result, &v)
+		result = append(result, v)
 	}
 	// Any more results?
 	return result, nil
@@ -283,7 +284,7 @@ type UserList struct {
 	Count    int64       `json:"count"`
 	Next     interface{} `json:"next"`
 	Previous interface{} `json:"previous"`
-	Results  []User      `json:"results"`
+	Results  []*User     `json:"results"`
 }
 
 // Organization represents a single document.
@@ -297,10 +298,10 @@ type Organization struct {
 
 // OrganizationList contains a list of organizations, e.g. from search.
 type OrganizationList struct {
-	Count    int64          `json:"count"`
-	Next     interface{}    `json:"next"`
-	Previous interface{}    `json:"previous"`
-	Results  []Organization `json:"results"`
+	Count    int64           `json:"count"`
+	Next     interface{}     `json:"next"`
+	Previous interface{}     `json:"previous"`
+	Results  []*Organization `json:"results"`
 }
 
 // TreeNode is a single document.
@@ -329,5 +330,5 @@ type TreeNodeList struct {
 	Count    int64       `json:"count"`
 	Next     interface{} `json:"next"`
 	Previous interface{} `json:"previous"`
-	Results  []TreeNode  `json:"results"`
+	Results  []*TreeNode `json:"results"`
 }
