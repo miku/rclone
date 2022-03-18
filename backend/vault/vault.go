@@ -93,6 +93,7 @@ package vault
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"path/filepath"
@@ -101,6 +102,7 @@ import (
 
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config/configmap"
+	"github.com/rclone/rclone/fs/config/configstruct"
 	"github.com/rclone/rclone/fs/hash"
 )
 
@@ -108,7 +110,6 @@ func init() {
 	fs.Register(&fs.RegInfo{
 		Name:        "vault",
 		Description: "Internet Archive Vault Digital Preservation System",
-		Prefix:      "vault",
 		NewFs:       NewFs,
 		Options: []fs.Option{
 			{
@@ -117,77 +118,250 @@ func init() {
 				Default: 0,
 			},
 			{
-				Name:    "collection",
-				Help:    "identifier of the collection for data transfer",
-				Default: 0,
-			},
-			{
 				Name:    "url",
-				Help:    "base URL of vault service",
-				Default: "http://localhost:8000",
+				Help:    "vault API URL",
+				Default: "http://localhost:8000/api",
 			},
 		},
 	})
 }
 
+// Options for this backend.
+type Options struct {
+	Username string `config:"username"`
+	Endpoint string `config:"url"`
+}
+
 func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, error) {
-	log.Printf("NewFs: %s %s", name, root)
-	// The name and root are omitted, as there is only one Internet Archive
-	// with a single namespace.
+	// log.Printf("NewFs: %s %s", name, root)
+	opts := new(Options)
+	err := configstruct.Set(cm, opts)
+	if err != nil {
+		return nil, err
+	}
 	return &Fs{
-		name:        name,
-		root:        root,
-		baseURL:     "http://localhost:8000",
-		description: "Internet Archive Vault Digital Preservation System",
-		username:    "admin", // TODO: get this from config map
+		name: name,
+		root: root,
+		opt:  *opts,
 		api: &Api{
-			Endpoint: "http://localhost:8000/api",
-			Username: "admin",
+			Endpoint: opts.Endpoint,
+			Username: opts.Username,
 		},
 	}, nil
 }
 
-// Fs represents Internet Archive collections and items.
+// Fs represents Vault as a file system.
 type Fs struct {
-	description string
-	name        string
-	root        string
-	// Vault related fields.
-	username string // user name (may only need this)
-	baseURL  string // e.g. http://localhost:8000
-	api      *Api
+	name string
+	root string
+	opt  Options // parsed config options
+	api  *Api
+}
+
+// Object represents a vault object, which is defined by a treeNode. Implements
+// various interfaces.
+type Object struct {
+	fs       *Fs       // The Fs this object is part of
+	treeNode *TreeNode // TreeNode object, which contains additional metadata, like modification time or hash
+}
+
+// Fs returns the Fs this object belongs to.
+func (o *Object) Fs() fs.Info {
+	return o.fs
+}
+
+// Hash return a selected checksum.
+func (o *Object) Hash(_ context.Context, ty hash.Type) (string, error) {
+	if o.treeNode == nil {
+		return "", nil
+	}
+	switch ty {
+	case hash.MD5:
+		switch v := o.treeNode.Md5Sum.(type) {
+		case string:
+			return v, nil
+		default:
+			return "", nil
+		}
+	case hash.SHA1:
+		switch v := o.treeNode.Sha1Sum.(type) {
+		case string:
+			return v, nil
+		default:
+			return "", nil
+		}
+	case hash.SHA256:
+		switch v := o.treeNode.Sha256Sum.(type) {
+		case string:
+			return v, nil
+		default:
+			return "", nil
+		}
+	default:
+		return "", nil
+	}
+}
+
+func (o *Object) Storable() bool {
+	// TODO: maybe only files and folders
+	return true
+}
+
+// String returns the name of the object.
+func (o *Object) String() string {
+	if o == nil {
+		return "<nil>"
+	}
+	return o.treeNode.Name
+}
+
+// Remote returns the remote path. This can fail silently. TODO: may cache this value.
+//
+// TODO: The remote name needs to be relative to the Fs.root, not the absolute path.
+// TODO: Can use TreeNode path to access treenodes faster and to remote root from path.
+func (o *Object) Remote() string {
+	// log.Println("Remote")
+	var (
+		rootSegments []string = strings.Split(o.fs.root, "/")
+		segments     []string
+		err          error
+	)
+	var t *TreeNode = o.treeNode
+OUTER:
+	for {
+		segments = append(segments, t.Name)
+		switch t.Parent.(type) {
+		case nil:
+			break OUTER
+		case string:
+			s := t.Parent.(string)
+			if s == "" {
+				break OUTER
+			}
+			t, err = o.fs.api.GetTreeNode(s)
+			if err != nil {
+				return ""
+			}
+		default:
+			log.Printf("warning: unknown parent type")
+		}
+	}
+	for i, j := 0, len(segments)-1; i < j; i, j = i+1, j-1 {
+		segments[i], segments[j] = segments[j], segments[i]
+	}
+	// Keep only segments which are not also in root.
+	if len(rootSegments) > 0 && len(rootSegments[0]) == 0 {
+		rootSegments = rootSegments[1:]
+	}
+	if len(segments) > 0 {
+		segments = segments[1:]
+	}
+	log.Printf("%v -- %v", rootSegments, segments)
+	var i int
+	for i = range rootSegments {
+		if i == len(segments) || rootSegments[i] != segments[i] {
+			break
+		}
+	}
+	segments = segments[i:]
+
+	// remote top level directory, which is the name of the organization (TODO
+	// maybe include it)
+	remote := strings.Join(segments, "/")
+	log.Printf("root: %v", o.fs.root)
+	log.Printf("remote: %v", remote)
+	// relpath := strings.Replace("/"+remote, o.fs.root+"/", "", 1)
+	// log.Printf("relpath: %v", relpath)
+	return remote
+}
+
+// ModTime returns the modification time of the object or epoch, if the time is not available.
+func (o *Object) ModTime(_ context.Context) time.Time {
+	epoch := time.Unix(0, 0)
+	if o.treeNode == nil {
+		return epoch
+	}
+	t, err := time.Parse("Jan 2, 2006 15:04:05 PST", o.treeNode.ModifiedAt)
+	if err == nil {
+		return t
+	}
+	return epoch
+}
+
+// Size returns the size of an object.
+func (o *Object) Size() int64 {
+	if o.treeNode == nil {
+		return 0
+	}
+	if o.treeNode.NodeType != "FILE" {
+		return 0
+	}
+	switch v := o.treeNode.Size.(type) {
+	case nil:
+		return 0
+	case int:
+		return int64(v)
+	case int64:
+		return v
+	default:
+		return 0
+	}
+}
+
+func (o *Object) SetModTime(ctx context.Context, t time.Time) error {
+	log.Println("SetModTime")
+	return nil
+}
+
+func (o *Object) Open(ctx context.Context, options ...fs.OpenOption) (io.ReadCloser, error) {
+	log.Println("Open")
+	return nil, nil
+}
+
+func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) error {
+	log.Println("Update")
+	return nil
+}
+
+func (o *Object) Remove(ctx context.Context) error {
+	log.Println("Remove")
+	return nil
 }
 
 // Name of the remote (as passed into NewFs)
 func (f *Fs) Name() string {
+	// log.Println("Name")
 	return f.name
 }
 
 // Root of the remote (as passed into NewFs)
 func (f *Fs) Root() string {
-	log.Println("Root")
+	// log.Println("Root")
 	return f.root
 }
 
-// String returns a description of the FS
+// String returns a description of the Fs.
 func (f *Fs) String() string {
-	return f.description
+	log.Println("String")
+	return f.name
 }
 
 // Precision of the ModTimes in this Fs.
 func (f *Fs) Precision() time.Duration {
+	log.Println("Precision")
 	return 1 * time.Second
 }
 
 // Returns the supported hash types of the filesystem
 func (f *Fs) Hashes() hash.Set {
+	log.Println("Hashes")
 	return hash.Set(hash.None)
 	// return hash.Set(hash.MD5 | hash.SHA1 | hash.SHA256)
 }
 
 // Features returns the optional features of this Fs.
 func (f *Fs) Features() *fs.Features {
-	log.Println("Features")
+	// log.Println("Features")
 	return &fs.Features{
 		CaseInsensitive:         true,
 		IsLocal:                 false,
@@ -278,20 +452,28 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 	// "/a/b/c" find collection named "a", parent "a" and name "b", parent "b" and "c"
 	full := filepath.Join(f.root, dir)
 
-	log.Printf("List: %s", full)
+	// log.Printf("List: %s", full)
 
 	t, err := f.api.ResolvePath(full)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("%v resolved to treenode %d: %v", full, t.Id, t)
+	// log.Printf("%v resolved to treenode %d: %v", full, t.Id, t)
+	if t.NodeType == "FILE" {
+		return nil, fmt.Errorf("path is a file")
+	}
 
 	tns, err := f.api.List(t)
 	if err != nil {
 		return nil, err
 	}
 	for _, tn := range tns {
-		log.Printf("%d\t%s\t%s", tn.Id, tn.NodeType, tn.Name)
+		// log.Printf("%d\t%s\t%s", tn.Id, tn.NodeType, tn.Name)
+		obj := &Object{
+			fs:       f,
+			treeNode: tn,
+		}
+		entries = append(entries, obj)
 	}
 
 	// link := fmt.Sprintf("%s/api/collections/?organization=%s", f.baseURL, f.organization)
@@ -323,13 +505,6 @@ func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err e
 	// 	&DummyFile{Name: "dummy file 2"},
 	// )
 	return entries, nil
-}
-
-func (f *Fs) list(ctx context.Context, dir string) (entries fs.DirEntries, err error) {
-	// [ ] org for username; http://127.0.0.1:8000/api/users/?last_login=&last_login__gt=&last_login__gte=&last_login__lt=&last_login__lte=&username__contains=&username__endswith=&username=admin&username__icontains=&username__iexact=&username__startswith=&first_name__contains=&first_name__endswith=&first_name=&first_name__icontains=&first_name__iexact=&first_name__startswith=&last_name__contains=&last_name__endswith=&last_name=&last_name__icontains=&last_name__iexact=&last_name__startswith=&date_joined=&date_joined__gt=&date_joined__gte=&date_joined__lt=&date_joined__lte=&organization=
-	// [ ] treenode for org
-
-	return nil, nil
 }
 
 // Collection represents an internet archive collection. This is similar to a

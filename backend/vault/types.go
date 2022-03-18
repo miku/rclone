@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -85,6 +84,7 @@ func (api *Api) ResolvePath(path string) (*TreeNode, error) {
 		case len(ts) == 0:
 			return nil, ErrPathNotFound
 		case len(ts) > 1:
+			// TODO: could warn the user, that a path with a different case exists
 			return nil, ErrInvalidPath
 		}
 		t, segments = ts[0], segments[1:]
@@ -116,7 +116,7 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 		link       = fmt.Sprintf("%s/users/?%s", api.Endpoint, vs.Encode())
 		resp, herr = http.Get(link) // move to pester or other retry library
 	)
-	log.Println(link)
+	// log.Println(link)
 	if herr != nil {
 		return nil, herr
 	}
@@ -166,12 +166,10 @@ func (api *Api) GetOrganization(id string) (*Organization, error) {
 
 // FindOrganizations finds organizations, filtered by query parameters.
 func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err error) {
-	var (
-		link       = fmt.Sprintf("%s/organizations/?%s", api.Endpoint, vs.Encode())
-		resp, herr = http.Get(link) // move to pester or other retry library
-	)
-	if herr != nil {
-		return nil, herr
+	link := fmt.Sprintf("%s/organizations/?%s", api.Endpoint, vs.Encode())
+	resp, err := http.Get(link) // move to pester or other retry library
+	if err != nil {
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -234,13 +232,11 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	// re_deposit_modified_at__lte=&modified_at=&modified_at__gt=&modified_at__gte=&mod
 	// ified_at__lt=&modified_at__lte=&uploaded_by=&comment__contains=&comment__endswit
 	// h=&comment=&comment__icontains=&comment__iexact=&comment__startswith=&parent=
-	var (
-		link       = fmt.Sprintf("%s/treenodes/?%s", api.Endpoint, vs.Encode())
-		resp, herr = http.Get(link) // move to pester or other retry library
-	)
-	log.Println(link)
-	if herr != nil {
-		return nil, herr
+	link := fmt.Sprintf("%s/treenodes/?%s", api.Endpoint, vs.Encode())
+	// log.Println(link)
+	resp, err := http.Get(link) // move to pester or other retry library
+	if err != nil {
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
