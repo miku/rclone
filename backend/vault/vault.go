@@ -89,6 +89,55 @@
 // * [ ] add a new collection
 // * [ ] add new folders and files
 //
+// Notes
+// -----
+//
+// Fs
+//   Info
+//     Name() string
+//     Root() string
+//     String() string
+//     Precision() time.Duration
+//     Hashes ...
+//     Features() ...
+//   List
+//   NewObject(..., remote string) (Object, error)
+//   Put(..., in io.Reader, src ObjectInfo, options ...OpenOptions) (Object, error)
+//   Mkdir(..., dir string) ...
+//   Rmdir(..., dir string) ...
+//
+// Object
+//   ObjectInfo
+//     DirEntry
+//       String() string
+//       Remote() string
+//       ModTime() ...
+//       Size() ...
+//     Fs() Info
+//     Hash(...)
+//     Storabel() bool
+//   SetModTime(...) ...
+//   Open(...) ...
+//   Update(...)...
+//   Remove(...) ...
+//
+// Directory
+//   DirEntry
+//     String() string
+//     Remote() string
+//     ModTime() ...
+//     Size() ...
+//  Items() int64
+//  ID() string
+//
+// FullObject
+//   Object
+//   MimeTypes
+//   IDer
+//   ObjectUnWrapper
+//   GetTierer
+//   SetTierer
+//
 package vault
 
 import (
@@ -104,6 +153,7 @@ import (
 	"github.com/rclone/rclone/fs/config/configmap"
 	"github.com/rclone/rclone/fs/config/configstruct"
 	"github.com/rclone/rclone/fs/hash"
+	"golang.org/x/sync/errgroup"
 )
 
 func init() {
@@ -133,9 +183,10 @@ type Options struct {
 }
 
 func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, error) {
-	// log.Printf("NewFs: %s %s", name, root)
-	opts := new(Options)
-	err := configstruct.Set(cm, opts)
+	var (
+		opts = new(Options)
+		err  = configstruct.Set(cm, opts)
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -147,22 +198,25 @@ func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, 
 			Endpoint: opts.Endpoint,
 			Username: opts.Username,
 		},
+		pathCache: make(map[string]string),
 	}, nil
 }
 
 // Fs represents Vault as a file system.
 type Fs struct {
-	name string
-	root string
-	opt  Options // parsed config options
-	api  *Api
+	name      string            // just "vault"
+	root      string            // the requested path
+	opt       Options           // parsed config options
+	api       *Api              // API wrapper
+	pathCache map[string]string // a cache for the duration of an operation
 }
 
 // Object represents a vault object, which is defined by a treeNode. Implements
-// various interfaces.
+// various interfaces. Can represent organization, collection, folder or file.
+// Not all operations will succeed on all node types.
 type Object struct {
 	fs       *Fs       // The Fs this object is part of
-	treeNode *TreeNode // TreeNode object, which contains additional metadata, like modification time or hash
+	treeNode *TreeNode // TreeNode object, contains additional metadata, like mod time or hash
 }
 
 // Fs returns the Fs this object belongs to.
@@ -177,34 +231,24 @@ func (o *Object) Hash(_ context.Context, ty hash.Type) (string, error) {
 	}
 	switch ty {
 	case hash.MD5:
-		switch v := o.treeNode.Md5Sum.(type) {
-		case string:
+		if v, ok := o.treeNode.Md5Sum.(string); ok {
 			return v, nil
-		default:
-			return "", nil
 		}
 	case hash.SHA1:
-		switch v := o.treeNode.Sha1Sum.(type) {
-		case string:
+		if v, ok := o.treeNode.Sha1Sum.(string); ok {
 			return v, nil
-		default:
-			return "", nil
 		}
 	case hash.SHA256:
-		switch v := o.treeNode.Sha256Sum.(type) {
-		case string:
+		if v, ok := o.treeNode.Sha256Sum.(string); ok {
 			return v, nil
-		default:
-			return "", nil
 		}
-	default:
-		return "", nil
 	}
+	return "", nil
 }
 
+// Storable, whether we can store data (TODO: look this up).
 func (o *Object) Storable() bool {
-	// TODO: maybe only files and folders
-	return true
+	return o.treeNode.NodeType == "FILE"
 }
 
 // String returns the name of the object.
@@ -215,64 +259,63 @@ func (o *Object) String() string {
 	return o.treeNode.Name
 }
 
-// Remote returns the remote path. This can fail silently. TODO: may cache this value.
+// path turns the treenode path field into a filelike path structure using the
+// name of the treenodes.
+func (o *Object) path() string {
+	var (
+		labels   = o.treeNode.Path // "6", "6.22", "6.22.87", ...
+		segments = strings.Split(labels, ".")
+		names    = make([]string, len(segments)-1)
+	)
+	// TODO: we only need to cache segments individually, would speed up ops.
+	if v, ok := o.fs.pathCache[labels]; ok {
+		return v
+	}
+	// This signal broken internal data.
+	if len(segments) == 0 {
+		return ""
+	}
+	// We always skip the organization treenode.
+	segments = segments[1:]
+	// Request path segments in parallel and cache.
+	g := new(errgroup.Group)
+	for i, s := range segments {
+		i, s := i, s
+		g.Go(func() error {
+			t, err := o.fs.api.GetTreeNode(s)
+			if err != nil {
+				return err
+			}
+			names[i] = t.Name
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return ""
+	}
+	v := "/" + strings.Join(names, "/")
+	o.fs.pathCache[labels] = v
+	return v
+}
+
+// relativePath returns the path relative to a given root, given as a string
+// like "/a/b" etc.
+func (o *Object) relativePath() string {
+	var root, relpath string
+	if root = o.fs.root; root == "" {
+		root = "/"
+	}
+	relpath = strings.Replace(o.path(), root, "", 1)
+	relpath = strings.TrimLeft(relpath, "/")
+	return relpath
+}
+
+// Remote turns a treenode into a path. This can fail silently.
 //
 // TODO: The remote name needs to be relative to the Fs.root, not the absolute path.
 // TODO: Can use TreeNode path to access treenodes faster and to remote root from path.
 func (o *Object) Remote() string {
-	// log.Println("Remote")
-	var (
-		rootSegments []string = strings.Split(o.fs.root, "/")
-		segments     []string
-		err          error
-	)
-	var t *TreeNode = o.treeNode
-OUTER:
-	for {
-		segments = append(segments, t.Name)
-		switch t.Parent.(type) {
-		case nil:
-			break OUTER
-		case string:
-			s := t.Parent.(string)
-			if s == "" {
-				break OUTER
-			}
-			t, err = o.fs.api.GetTreeNode(s)
-			if err != nil {
-				return ""
-			}
-		default:
-			log.Printf("warning: unknown parent type")
-		}
-	}
-	for i, j := 0, len(segments)-1; i < j; i, j = i+1, j-1 {
-		segments[i], segments[j] = segments[j], segments[i]
-	}
-	// Keep only segments which are not also in root.
-	if len(rootSegments) > 0 && len(rootSegments[0]) == 0 {
-		rootSegments = rootSegments[1:]
-	}
-	if len(segments) > 0 {
-		segments = segments[1:]
-	}
-	log.Printf("%v -- %v", rootSegments, segments)
-	var i int
-	for i = range rootSegments {
-		if i == len(segments) || rootSegments[i] != segments[i] {
-			break
-		}
-	}
-	segments = segments[i:]
-
-	// remote top level directory, which is the name of the organization (TODO
-	// maybe include it)
-	remote := strings.Join(segments, "/")
-	log.Printf("root: %v", o.fs.root)
-	log.Printf("remote: %v", remote)
-	// relpath := strings.Replace("/"+remote, o.fs.root+"/", "", 1)
-	// log.Printf("relpath: %v", relpath)
-	return remote
+	return o.relativePath()
 }
 
 // ModTime returns the modification time of the object or epoch, if the time is not available.
@@ -281,7 +324,7 @@ func (o *Object) ModTime(_ context.Context) time.Time {
 	if o.treeNode == nil {
 		return epoch
 	}
-	t, err := time.Parse("Jan 2, 2006 15:04:05 PST", o.treeNode.ModifiedAt)
+	t, err := time.Parse("January 2, 2006 15:04:05 UTC", o.treeNode.ModifiedAt)
 	if err == nil {
 		return t
 	}
@@ -300,6 +343,8 @@ func (o *Object) Size() int64 {
 	case nil:
 		return 0
 	case int:
+		return int64(v)
+	case float64:
 		return int64(v)
 	case int64:
 		return v
