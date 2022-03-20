@@ -92,51 +92,51 @@
 // Notes
 // -----
 //
-// Fs
-//   Info
-//     Name() string
-//     Root() string
-//     String() string
-//     Precision() time.Duration
-//     Hashes ...
-//     Features() ...
-//   List
-//   NewObject(..., remote string) (Object, error)
-//   Put(..., in io.Reader, src ObjectInfo, options ...OpenOptions) (Object, error)
-//   Mkdir(..., dir string) ...
-//   Rmdir(..., dir string) ...
+// [ ] Fs
+// [x]   Info
+// [x]     Name() string
+// [x]     Root() string
+// [x]     String() string
+// [x]     Precision() time.Duration
+// [x]     Hashes ...
+// [x]     Features() ...
+// [x]   List
+// [ ]   NewObject(..., remote string) (Object, error)
+// [ ]   Put(..., in io.Reader, src ObjectInfo, options ...OpenOptions) (Object, error)
+// [ ]   Mkdir(..., dir string) ...
+// [ ]   Rmdir(..., dir string) ...
 //
-// Object
-//   ObjectInfo
-//     DirEntry
-//       String() string
-//       Remote() string
-//       ModTime() ...
-//       Size() ...
-//     Fs() Info
-//     Hash(...)
-//     Storabel() bool
-//   SetModTime(...) ...
-//   Open(...) ...
-//   Update(...)...
-//   Remove(...) ...
+// [ ] Object
+// [ ]   ObjectInfo
+// [ ]     DirEntry
+// [x]       String() string
+// [x]       Remote() string
+// [x]       ModTime() ...
+// [x]       Size() ...
+// [x]     Fs() Info
+// [x]     Hash(...)
+// [x]     Storable() bool
+// [ ]   SetModTime(...) ...
+// [ ]   Open(...) ...
+// [ ]   Update(...)...
+// [ ]   Remove(...) ...
 //
-// Directory
-//   DirEntry
-//     String() string
-//     Remote() string
-//     ModTime() ...
-//     Size() ...
-//  Items() int64
-//  ID() string
+// [ ] Directory
+// [ ]   DirEntry
+// [ ]     String() string
+// [ ]     Remote() string
+// [ ]     ModTime() ...
+// [ ]     Size() ...
+// [ ]  Items() int64
+// [ ]  ID() string
 //
-// FullObject
-//   Object
-//   MimeTypes
-//   IDer
-//   ObjectUnWrapper
-//   GetTierer
-//   SetTierer
+// [ ] FullObject
+// [ ]   Object
+// [ ]   MimeTypes
+// [ ]   IDer
+// [ ]   ObjectUnWrapper
+// [ ]   GetTierer
+// [ ]   SetTierer
 //
 package vault
 
@@ -183,6 +183,7 @@ type Options struct {
 }
 
 func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, error) {
+	// log.Printf("NewFs(..., %s, %s, ...)", name, root)
 	var (
 		opts = new(Options)
 		err  = configstruct.Set(cm, opts)
@@ -211,6 +212,24 @@ type Fs struct {
 	pathCache map[string]string // a cache for the duration of an operation
 }
 
+type Folder struct {
+	Object
+}
+
+// Items returns number of child items.
+func (f *Folder) Items() int64 {
+	items, err := f.Object.fs.api.List(f.Object.treeNode)
+	if err != nil {
+		return 0
+	}
+	return int64(len(items))
+}
+
+// ID return the treenode path, which is unique.
+func (f *Folder) ID() string {
+	return f.Object.treeNode.Path
+}
+
 // Object represents a vault object, which is defined by a treeNode. Implements
 // various interfaces. Can represent organization, collection, folder or file.
 // Not all operations will succeed on all node types.
@@ -226,6 +245,7 @@ func (o *Object) Fs() fs.Info {
 
 // Hash return a selected checksum.
 func (o *Object) Hash(_ context.Context, ty hash.Type) (string, error) {
+	log.Println("Hash")
 	if o.treeNode == nil {
 		return "", nil
 	}
@@ -248,6 +268,7 @@ func (o *Object) Hash(_ context.Context, ty hash.Type) (string, error) {
 
 // Storable, whether we can store data (TODO: look this up).
 func (o *Object) Storable() bool {
+	log.Println("Storable")
 	return o.treeNode.NodeType == "FILE"
 }
 
@@ -486,133 +507,48 @@ func (f *Fs) Features() *fs.Features {
 //
 // This should return ErrDirNotFound if the directory isn't
 // found.
-func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err error) {
-	//
-	// dir      action
-	// ---------------
-	// ""       find ORG treenode (for user); then all item having that ORG as parent (mostly collections)
-	// "/"      same as ""
-	// "/a"     find collection named "a"
-	// "/a/b"   find collection named "a", and find all parents
-	// "/a/b/c" find collection named "a", parent "a" and name "b", parent "b" and "c"
-	full := filepath.Join(f.root, dir)
-
-	// log.Printf("List: %s", full)
-
-	t, err := f.api.ResolvePath(full)
+func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
+	log.Println("List")
+	var (
+		full    = filepath.Join(f.root, dir)
+		nodes   []*TreeNode
+		entries fs.DirEntries
+		entry   fs.DirEntry
+	)
+	t, err := f.api.resolvePath(full)
 	if err != nil {
-		return nil, err
+		return nil, fs.ErrorDirNotFound
 	}
-	// log.Printf("%v resolved to treenode %d: %v", full, t.Id, t)
 	if t.NodeType == "FILE" {
-		return nil, fmt.Errorf("path is a file")
+		entries = append(entries, &Object{
+			fs:       f,
+			treeNode: t,
+		})
+		return entries, nil
 	}
-
-	tns, err := f.api.List(t)
-	if err != nil {
+	if nodes, err = f.api.List(t); err != nil {
 		return nil, err
 	}
-	for _, tn := range tns {
-		// log.Printf("%d\t%s\t%s", tn.Id, tn.NodeType, tn.Name)
-		obj := &Object{
-			fs:       f,
-			treeNode: tn,
+	for _, t := range nodes {
+		switch t.NodeType {
+		case "FOLDER", "COLLECTION":
+			entry = &Folder{
+				Object: Object{
+					fs:       f,
+					treeNode: t,
+				},
+			}
+		case "FILE":
+			entry = &Object{
+				fs:       f,
+				treeNode: t,
+			}
+		default:
+			return nil, fmt.Errorf("unexpected node type: %v", t.NodeType)
 		}
-		entries = append(entries, obj)
+		entries = append(entries, entry)
 	}
-
-	// link := fmt.Sprintf("%s/api/collections/?organization=%s", f.baseURL, f.organization)
-	// log.Println(link)
-	// resp, err := http.Get(link)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// defer resp.Body.Close()
-	// if resp.StatusCode >= 400 {
-	// 	return nil, fmt.Errorf("failed to list directory: %s", dir)
-	// }
-	// var payload struct {
-	// 	Collections []struct {
-	// 		Id   int64  `json:"id"`
-	// 		Name string `json:"name"`
-	// 	} `json:"collections"`
-	// }
-	// dec := json.NewDecoder(resp.Body)
-	// if err := dec.Decode(&payload); err != nil {
-	// 	return nil, err
-	// }
-	// for _, c := range payload.Collections {
-	// 	entries = append(entries, &DummyFile{Name: c.Name})
-	// }
-
-	// entries = append(entries,
-	// 	&DummyFile{Name: "dummy file 1"}, // not yet an "Object" or "Directory"
-	// 	&DummyFile{Name: "dummy file 2"},
-	// )
 	return entries, nil
-}
-
-// Collection represents an internet archive collection. This is similar to a
-// bucket or a directory, which can contain many collections or items.
-type Collection struct{}
-
-// DummyFile is an actual object. Embeds read-only object information as well.
-type DummyFile struct {
-	Name string
-}
-
-// SetModTime sets the metadata on the object to set the modification date
-func (f *DummyFile) SetModTime(ctx context.Context, t time.Time) error {
-	return nil
-}
-
-// Open opens the file for read.  Call Close() on the returned io.ReadCloser
-func (f *DummyFile) Open(ctx context.Context, options ...fs.OpenOption) (io.ReadCloser, error) {
-	return io.NopCloser(strings.NewReader("dummy content")), nil
-}
-
-// Update in to the object with the modTime given of the given size
-//
-// When called from outside an Fs by rclone, src.Size() will always be >= 0.
-// But for unknown-sized objects (indicated by src.Size() == -1), Upload should either
-// return an error or update the object properly (rather than e.g. calling panic).
-func (f *DummyFile) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) error {
-	return nil
-}
-
-// Removes this object
-func (f *DummyFile) Remove(ctx context.Context) error {
-	return nil
-}
-
-// dummyFile implementing DirEntry
-
-func (f *DummyFile) String() string {
-	return f.Name
-}
-
-func (f *DummyFile) Remote() string {
-	return f.Name + " (remote)"
-}
-
-func (f *DummyFile) ModTime(ctx context.Context) time.Time {
-	return time.Now()
-}
-
-func (f *DummyFile) Size() int64 {
-	return int64(len(f.Name))
-}
-
-func (f *DummyFile) Fs() fs.Info {
-	return &Fs{}
-}
-
-func (f *DummyFile) Hash(ctx context.Context, ty hash.Type) (string, error) {
-	return "244aa7266b3f5a08321b403b2c59baeba5539b19", nil
-}
-
-func (f *DummyFile) Storable() bool {
-	return true
 }
 
 // NewObject finds the Object at remote.  If it can't be found
@@ -623,7 +559,17 @@ func (f *DummyFile) Storable() bool {
 // otherwise ErrorObjectNotFound.
 func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 	log.Println("NewObject")
-	return nil, nil
+	t, err := f.api.resolvePath(remote)
+	if err != nil {
+		return nil, fs.ErrorObjectNotFound
+	}
+	if t.NodeType == "FOLDER" || t.NodeType == "COLLECTION" {
+		return nil, fs.ErrorIsDir
+	}
+	return &Object{
+		fs:       f,
+		treeNode: t,
+	}, nil
 }
 
 // Put in to the remote path with the modTime given of the given size
@@ -662,6 +608,6 @@ var (
 	// _ fs.Copier      = &Fs{}
 	// _ fs.PutStreamer = &Fs{}
 	// _ fs.ListRer     = &Fs{}
-	// _ fs.Object      = &Object{}
+	_ fs.Object = &Object{}
 	// _ fs.MimeTyper   = &Object{}
 )

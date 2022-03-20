@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -64,9 +65,9 @@ func (api *Api) root() (*TreeNode, error) {
 	return api.GetTreeNode(organization.TreeNode)
 }
 
-// ResolvePath takes a path and turns it into a TreeNode representing that
+// resolvePath takes a path and turns it into a TreeNode representing that
 // object (org, collection, folder, file). A path is case sensitive.
-func (api *Api) ResolvePath(path string) (*TreeNode, error) {
+func (api *Api) resolvePath(path string) (*TreeNode, error) {
 	t, err := api.root()
 	if err != nil {
 		return nil, err
@@ -75,7 +76,7 @@ func (api *Api) ResolvePath(path string) (*TreeNode, error) {
 	segments := strings.Split(strings.TrimRight(path, "/"), "/")[1:]
 	for len(segments) > 0 {
 		ts, err := api.FindTreeNodes(url.Values{
-			"parent": []string{fmt.Sprintf("%d", t.Id)},
+			"parent": []string{strconv.Itoa(int(t.Id))},
 			"name":   []string{segments[0]},
 		})
 		switch {
