@@ -145,6 +145,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -191,14 +192,25 @@ func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, 
 	if err != nil {
 		return nil, err
 	}
+	// TODO: if we have a file, we may want to set root to the containing folder?
+	api := &Api{
+		Endpoint: opts.Endpoint,
+		Username: opts.Username,
+	}
+	// TODO: Do we need to change this here?
+	// t, err := api.resolvePath(root)
+	// if err != nil {
+	// 	return nil, ErrPathNotFound
+	// }
+	// if t.NodeType == "FILE" {
+	// 	log.Printf("file detected: %v", root)
+	// 	root = path.Dir(root)
+	// }
 	return &Fs{
-		name: name,
-		root: root,
-		opt:  *opts,
-		api: &Api{
-			Endpoint: opts.Endpoint,
-			Username: opts.Username,
-		},
+		name:      name,
+		root:      root,
+		opt:       *opts,
+		api:       api,
 		pathCache: make(map[string]string),
 	}, nil
 }
@@ -433,6 +445,7 @@ func (f *Fs) Features() *fs.Features {
 		IsLocal:                 false,
 		CanHaveEmptyDirectories: true,
 		SlowHash:                true,
+		BucketBased:             false,
 		// DuplicateFiles:          false,
 		// CanHaveEmptyDirectories: true,
 		// BucketBased:             true,
@@ -508,7 +521,7 @@ func (f *Fs) Features() *fs.Features {
 // This should return ErrDirNotFound if the directory isn't
 // found.
 func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
-	log.Println("List")
+	// log.Printf("List root=%v, dir=%v", f.root, dir)
 	var (
 		full    = filepath.Join(f.root, dir)
 		nodes   []*TreeNode
@@ -520,6 +533,9 @@ func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 		return nil, fs.ErrorDirNotFound
 	}
 	if t.NodeType == "FILE" {
+		// Hack around listing a single file.
+		// return nil, fs.ErrorDirNotFound
+		f.root = path.Dir(f.root)
 		entries = append(entries, &Object{
 			fs:       f,
 			treeNode: t,
@@ -539,6 +555,7 @@ func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 				},
 			}
 		case "FILE":
+			// return nil, fs.ErrorDirNotFound
 			entry = &Object{
 				fs:       f,
 				treeNode: t,
@@ -582,7 +599,11 @@ func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 // will return the object and the error, otherwise will return
 // nil and the error
 func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
-	log.Println("Put")
+	log.Printf("Put: %v, %v, %v", f.root, src, options)
+
+	// TODO: vault upload
+	// 1 api/register_deposit
+	// 2 api/flow_chunk
 	return nil, nil
 }
 

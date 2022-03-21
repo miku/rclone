@@ -74,6 +74,9 @@ func (api *Api) resolvePath(path string) (*TreeNode, error) {
 	}
 	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
 	segments := strings.Split(strings.TrimRight(path, "/"), "/")[1:]
+	if path != "" && path != "/" && len(segments) == 0 {
+		return nil, ErrPathNotFound
+	}
 	for len(segments) > 0 {
 		ts, err := api.FindTreeNodes(url.Values{
 			"parent": []string{strconv.Itoa(int(t.Id))},
@@ -90,6 +93,7 @@ func (api *Api) resolvePath(path string) (*TreeNode, error) {
 		}
 		t, segments = ts[0], segments[1:]
 	}
+	// log.Printf("resolved %s to treenode id %d", path, t.Id)
 	return t, nil
 }
 
