@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -95,6 +97,27 @@ func (api *Api) resolvePath(path string) (*TreeNode, error) {
 	}
 	// log.Printf("resolved %s to treenode id %d", path, t.Id)
 	return t, nil
+}
+
+func (api *Api) CreateCollection(name string) error {
+	var (
+		link     = fmt.Sprintf("%s/collections", api.Endpoint)
+		req, err = http.NewRequest("POST", link, strings.NewReader(fmt.Sprintf(`{"name": %v"`, name)))
+	)
+	req.Header.Add("Content-Type", "application/json")
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("api failed with %v", resp.StatusCode)
+	}
+	io.Copy(os.Stderr, resp.Body)
+	return nil
 }
 
 // List list all children under a given treenode.

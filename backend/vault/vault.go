@@ -611,7 +611,21 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 //
 // Shouldn't return an error if it already exists
 func (f *Fs) Mkdir(ctx context.Context, dir string) error {
-	log.Println("Mkdir")
+	log.Printf("mkdir root=%v dir=%v", f.root, dir)
+	switch {
+	case strings.Count(f.root, "/") == 1 && strings.HasPrefix(f.root, "/"):
+		log.Printf("creating collection: %v", f.root[1:])
+		err := f.api.CreateCollection(f.root[1:])
+		if err != nil {
+			return err
+		}
+	case strings.Count(f.root, "/") > 1:
+		segments := strings.Split(f.root, "/")
+		segments = segments[1:]
+		log.Printf("creating folder under collection=%v folder=%v", segments[0], segments[1:])
+	default:
+		return fmt.Errorf("cannot create dir %v", f.root)
+	}
 	return nil
 }
 
@@ -619,7 +633,7 @@ func (f *Fs) Mkdir(ctx context.Context, dir string) error {
 //
 // Return an error if it doesn't exist or isn't empty
 func (f *Fs) Rmdir(ctx context.Context, dir string) error {
-	log.Println("Rmdir")
+	log.Printf("rmdir %v %v", f.root, dir)
 	return nil
 }
 
