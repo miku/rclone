@@ -43,19 +43,10 @@
 // Some possible features
 // ----------------------
 //
-// Link generation for files.
-//
 // $ rclone link vault:/collection1/folder1/file1 -> http://archive.org/...
 //
 // Like: https://rclone.org/b2/#b2-and-rclone-link
 //
-//
-// Piggyback on rclone facilities
-// ------------------------------
-//
-// - [ ] rest for server access
-// - [ ] dirCache for mapping path to e.g. ltree path in treenode
-// - [ ] fs.NewDir for generic directory access
 //
 // Options to consider
 // -------------------
@@ -94,11 +85,9 @@
 //
 // Prototype:
 //
-// * [ ] rewrite with rclone rest support
 // * [ ] read-only interface
 // * [ ] add a new collection
 // * [ ] add new folders and files
-//
 //
 // Notes
 // -----
@@ -192,10 +181,12 @@ func init() {
 
 // Fs represents Vault as a file system.
 type Fs struct {
-	name string  // name of remote, e.g. "vault"
-	root string  // the requested path
-	opt  Options // parsed config options
-	api  *Api    // vault API wrapper
+	name      string            // just "vault"
+	root      string            // the requested path
+	opt       Options           // parsed config options
+	api       *Api              // API wrapper, deprecated, move to "srv"
+	srv       *rest.Client      // the connection to the vault server
+	pathCache map[string]string // a cache for the duration of an operation
 }
 
 // Options for this backend.
@@ -204,103 +195,70 @@ type Options struct {
 	Endpoint string `config:"url"`
 }
 
-// Object represents a vault object, which is defined by a treeNode. Implements
-// various interfaces. Can represent organization, collection, folder or file.
-// Not all operations will succeed on all node types.
-type Object struct {
-	fs       *Fs       // The Fs this object is part of.
-	treeNode *TreeNode // Contains additional metadata, like mod time or hash.
-}
-
-// DirLike is either a organization, collection or folder - or anything that is
-// not a file.
-type DirLike struct {
-	Object
-}
-
 func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, error) {
 	opts := new(Options)
 	err := configstruct.Set(cm, opts)
 	if err != nil {
 		return nil, err
 	}
+	// TODO: if we have a file path, we may want to set root to the containing folder?
+	api := &Api{
+		Endpoint: opts.Endpoint,
+		Username: opts.Username,
+	}
+	// TODO: Do we need to change this here?
+	// t, err := api.resolvePath(root)
+	// if err != nil {
+	// 	return nil, ErrPathNotFound
+	// }
+	// if t.NodeType == "FILE" {
+	// 	log.Printf("file detected: %v", root)
+	// 	root = path.Dir(root)
+	// }
 	return &Fs{
-		name: name,
-		root: root,
-		opt:  *opts,
-		api: &Api{
-			Endpoint: opts.Endpoint,
-			Username: opts.Username,
-			srv:      rest.NewClient(fshttp.NewClient(ctx)),
-		},
+		name:      name,
+		root:      root,
+		opt:       *opts,
+		api:       api,
+		srv:       rest.NewClient(fshttp.NewClient(ctx)),
+		pathCache: make(map[string]string),
 	}, nil
 }
 
-// Name of the remote (as passed into NewFs)
-func (f *Fs) Name() string {
-	return f.name
+type Folder struct {
+	Object
 }
 
-// Root of the remote (as passed into NewFs)
-func (f *Fs) Root() string {
-	return f.root
-}
-
-// String returns a description of the Fs.
-func (f *Fs) String() string {
-	return f.name
-}
-
-// Precision of the ModTimes in this Fs.
-func (f *Fs) Precision() time.Duration {
-	return 1 * time.Second
-}
-
-// Returns the supported hash types of the filesystem
-func (f *Fs) Hashes() hash.Set {
-	return hash.Set(hash.None) // (hash.MD5 | hash.SHA1 | hash.SHA256)
-}
-
-// Features returns the optional features of this Fs.
-func (f *Fs) Features() *fs.Features {
-	return &fs.Features{
-		CaseInsensitive:         true,
-		IsLocal:                 false,
-		CanHaveEmptyDirectories: true,
-		SlowHash:                true,
-		BucketBased:             false,
-	}
-}
-
-// DirLike container.
-func (d *DirLike) Items() int64 {
-	items, err := d.fs.api.List(d.treeNode)
+// Items returns number of child items.
+func (f *Folder) Items() int64 {
+	items, err := f.Object.fs.api.List(f.Object.treeNode)
 	if err != nil {
 		return 0
 	}
 	return int64(len(items))
 }
 
-// ID returns the threenode path, which is unique.
-func (d *DirLike) ID() string {
-	if d.Object.treeNode == nil {
-		return ""
-	}
-	return d.treeNode.Path
+// ID return the treenode path, which is unique.
+func (f *Folder) ID() string {
+	return f.Object.treeNode.Path
 }
 
-// Object properties; an object can be a organization, collection, folder or
-// file.
-//
-// We may use generic dir implementation.
+// Object represents a vault object, which is defined by a treeNode. Implements
+// various interfaces. Can represent organization, collection, folder or file.
+// Not all operations will succeed on all node types.
+type Object struct {
+	fs       *Fs       // The Fs this object is part of
+	treeNode *TreeNode // TreeNode object, contains additional metadata, like mod time or hash
+}
 
 // Fs returns the Fs this object belongs to.
 func (o *Object) Fs() fs.Info {
 	return o.fs
 }
 
-// Hash return a hash sum for the object.
+// Hash return a selected checksum.
 func (o *Object) Hash(_ context.Context, ty hash.Type) (string, error) {
+	log.Println("Hash")
 	if o.treeNode == nil {
 		return "", nil
 	}
@@ -323,10 +281,11 @@ func (o *Object) Hash(_ context.Context, ty hash.Type) (string, error) {
 
 // Storable, whether we can store data (TODO: look this up).
 func (o *Object) Storable() bool {
-	return true
+	log.Println("Storable")
+	return o.treeNode.NodeType == "FILE"
 }
 
-// String returns the name of the object, here the basename of the object.
+// String returns the name of the object.
 func (o *Object) String() string {
 	if o == nil {
 		return "<nil>"
@@ -334,23 +293,25 @@ func (o *Object) String() string {
 	return o.treeNode.Name
 }
 
-// path turns the treenode path field into a filelike path string using the
+// path turns the treenode path field into a filelike path structure using the
 // name of the treenodes.
-//
-// Note that this returns the full path of the node, not the relative path.
 func (o *Object) path() string {
 	var (
 		labels   = o.treeNode.Path // "6", "6.22", "6.22.87", ...
 		segments = strings.Split(labels, ".")
 		names    = make([]string, len(segments)-1)
 	)
+	// TODO: we only need to cache segments individually, would speed up ops.
+	if v, ok := o.fs.pathCache[labels]; ok {
+		return v
+	}
 	// This signal broken internal data.
 	if len(segments) == 0 {
 		return ""
 	}
 	// We always skip the organization treenode.
 	segments = segments[1:]
-	// Request path segments in parallel.
+	// Request path segments in parallel and cache.
 	g := new(errgroup.Group)
 	for i, s := range segments {
 		i, s := i, s
@@ -367,6 +328,7 @@ func (o *Object) path() string {
 		return ""
 	}
 	v := "/" + strings.Join(names, "/")
+	o.fs.pathCache[labels] = v
 	return v
 }
 
@@ -382,8 +344,10 @@ func (o *Object) relativePath() string {
 	return relpath
 }
 
-// Remote turns a treenode into a path. This can fail silently. Note: The
-// remote name needs to be relative to the Fs.root, not the absolute path.
+// Remote turns a treenode into a path. This can fail silently.
+//
+// TODO: The remote name needs to be relative to the Fs.root, not the absolute path.
+// TODO: Can use TreeNode path to access treenodes faster and to remote root from path.
 func (o *Object) Remote() string {
 	return o.relativePath()
 }
@@ -394,8 +358,8 @@ func (o *Object) ModTime(_ context.Context) time.Time {
 	if o.treeNode == nil {
 		return epoch
 	}
-	layout := "January 2, 2006 15:04:05 UTC"
-	if t, err := time.Parse(layout, o.treeNode.ModifiedAt); err == nil {
+	t, err := time.Parse("January 2, 2006 15:04:05 UTC", o.treeNode.ModifiedAt)
+	if err == nil {
 		return t
 	}
 	return epoch
@@ -424,19 +388,73 @@ func (o *Object) Size() int64 {
 }
 
 func (o *Object) SetModTime(ctx context.Context, t time.Time) error {
+	log.Println("SetModTime")
 	return nil
 }
 
 func (o *Object) Open(ctx context.Context, options ...fs.OpenOption) (io.ReadCloser, error) {
+	log.Println("Open")
 	return nil, nil
 }
 
 func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) error {
+	log.Println("Update")
 	return nil
 }
 
 func (o *Object) Remove(ctx context.Context) error {
+	log.Println("Remove")
 	return nil
+}
+
+// Name of the remote (as passed into NewFs)
+func (f *Fs) Name() string {
+	// log.Println("Name")
+	return f.name
+}
+
+// Root of the remote (as passed into NewFs)
+func (f *Fs) Root() string {
+	// log.Println("Root")
+	return f.root
+}
+
+// String returns a description of the Fs.
+func (f *Fs) String() string {
+	log.Println("String")
+	return f.name
+}
+
+// Precision of the ModTimes in this Fs.
+func (f *Fs) Precision() time.Duration {
+	log.Println("Precision")
+	return 1 * time.Second
+}
+
+// Returns the supported hash types of the filesystem
+func (f *Fs) Hashes() hash.Set {
+	log.Println("Hashes")
+	return hash.Set(hash.None)
+	// return hash.Set(hash.MD5 | hash.SHA1 | hash.SHA256)
+}
+
+// Features returns the optional features of this Fs.
+func (f *Fs) Features() *fs.Features {
+	// log.Println("Features")
+	return &fs.Features{
+		CaseInsensitive:         true,
+		IsLocal:                 false,
+		CanHaveEmptyDirectories: true,
+		SlowHash:                true,
+		BucketBased:             false,
+		// DuplicateFiles:          false,
+		// CanHaveEmptyDirectories: true,
+		// BucketBased:             true,
+		// BucketBasedRootOK:       true,
+		// SetTier:                 false,
+		// GetTier:                 false,
+		// ServerSideAcrossConfigs: true,
+	}
 }
 
 // func (f *Fs) listRoot(ctx context.Context) (entries fs.DirEntries, err error) {
@@ -504,6 +522,7 @@ func (o *Object) Remove(ctx context.Context) error {
 // This should return ErrDirNotFound if the directory isn't
 // found.
 func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
+	// log.Printf("List root=%v, dir=%v", f.root, dir)
 	var (
 		full    = filepath.Join(f.root, dir)
 		nodes   []*TreeNode
@@ -530,12 +549,14 @@ func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 	for _, t := range nodes {
 		switch t.NodeType {
 		case "FOLDER", "COLLECTION":
-			entry = &DirLike{
-				Object{
+			entry = &Folder{
+				Object: Object{
 					fs:       f,
 					treeNode: t,
-				}}
+				},
+			}
 		case "FILE":
+			// return nil, fs.ErrorDirNotFound
 			entry = &Object{
 				fs:       f,
 				treeNode: t,
@@ -555,6 +576,7 @@ func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 // ErrorIsDir if possible without doing any extra work,
 // otherwise ErrorObjectNotFound.
 func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
+	log.Println("NewObject")
 	t, err := f.api.resolvePath(remote)
 	if err != nil {
 		return nil, fs.ErrorObjectNotFound
@@ -612,6 +634,7 @@ func (f *Fs) Mkdir(ctx context.Context, dir string) error {
 //
 // Return an error if it doesn't exist or isn't empty
 func (f *Fs) Rmdir(ctx context.Context, dir string) error {
+	log.Printf("rmdir %v %v", f.root, dir)
 	return nil
 }
 

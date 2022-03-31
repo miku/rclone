@@ -15,6 +15,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/rclone/rclone/lib/rest"
 )
 
 var (
@@ -24,8 +26,9 @@ var (
 
 // Api handles all interactions with the vault API. TODO: handle auth for API.
 type Api struct {
-	Endpoint string // e.g. http://127.0.0.1:8000/api
-	Username string // vault username, required for various operations
+	Endpoint string       // e.g. http://127.0.0.1:8000/api
+	Username string       // vault username, required for various operations
+	srv      *rest.Client // the connection to the vault server
 }
 
 // ApiError for allows to transmit HTTP code and message.
@@ -90,12 +93,10 @@ func (api *Api) resolvePath(path string) (*TreeNode, error) {
 		case len(ts) == 0:
 			return nil, ErrPathNotFound
 		case len(ts) > 1:
-			// TODO: could warn the user, that a path with a different case exists
 			return nil, ErrInvalidPath
 		}
 		t, segments = ts[0], segments[1:]
 	}
-	// log.Printf("resolved %s to treenode id %d", path, t.Id)
 	return t, nil
 }
 
