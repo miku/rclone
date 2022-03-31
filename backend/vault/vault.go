@@ -166,6 +166,7 @@ import (
 	"github.com/rclone/rclone/fs/config/configstruct"
 	"github.com/rclone/rclone/fs/fshttp"
 	"github.com/rclone/rclone/fs/hash"
+	"github.com/rclone/rclone/lib/dircache"
 	"github.com/rclone/rclone/lib/rest"
 	"golang.org/x/sync/errgroup"
 )
@@ -192,10 +193,11 @@ func init() {
 
 // Fs represents Vault as a file system.
 type Fs struct {
-	name string  // name of remote, e.g. "vault"
-	root string  // the requested path
-	opt  Options // parsed config options
-	api  *Api    // vault API wrapper
+	name     string             // name of remote, e.g. "vault"
+	root     string             // the requested path
+	opt      Options            // parsed config options
+	api      *Api               // vault API wrapper
+	dirCache *dircache.DirCache // Map of directory path to id ("6.11.23", ...)
 }
 
 // Options for this backend.
