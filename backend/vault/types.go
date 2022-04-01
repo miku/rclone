@@ -26,8 +26,8 @@ var (
 
 // Api handles all interactions with the vault API. TODO: handle auth for API.
 type Api struct {
-	Endpoint string       // e.g. http://127.0.0.1:8000/api
-	Username string       // vault username, required for various operations
+	endpoint string       // e.g. http://127.0.0.1:8000/api
+	username string       // vault username, required for various operations
 	srv      *rest.Client // the connection to the vault server
 }
 
@@ -49,7 +49,7 @@ func (e *ApiError) Error() string {
 // organization's treenode.
 func (api *Api) root() (*TreeNode, error) {
 	userList, err := api.FindUsers(url.Values{
-		"username": []string{api.Username},
+		"username": []string{api.username},
 	})
 	switch {
 	case err != nil:
@@ -102,7 +102,7 @@ func (api *Api) resolvePath(path string) (*TreeNode, error) {
 
 func (api *Api) CreateCollection(name string) error {
 	var (
-		link     = fmt.Sprintf("%s/collections", api.Endpoint)
+		link     = fmt.Sprintf("%s/collections", api.endpoint)
 		req, err = http.NewRequest("POST", link, strings.NewReader(fmt.Sprintf(`{"name": %v"`, name)))
 	)
 	req.Header.Add("Content-Type", "application/json")
@@ -142,7 +142,7 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 	// startswith=&date_joined=&date_joined__gt=&date_joined__gte=&date_joined__lt=&dat
 	// e_joined__lte=&organization=
 	var (
-		link       = fmt.Sprintf("%s/users/?%s", api.Endpoint, vs.Encode())
+		link       = fmt.Sprintf("%s/users/?%s", api.endpoint, vs.Encode())
 		resp, herr = http.Get(link) // move to pester or other retry library
 	)
 	// log.Println(link)
@@ -173,7 +173,7 @@ func (api *Api) GetOrganization(id string) (*Organization, error) {
 	if strings.HasPrefix(id, "http") {
 		link = id
 	} else {
-		link = fmt.Sprintf("%s/organizations/%s", api.Endpoint, id)
+		link = fmt.Sprintf("%s/organizations/%s", api.endpoint, id)
 	}
 	resp, err := http.Get(link) // move to pester or other retry library
 	if err != nil {
@@ -195,7 +195,7 @@ func (api *Api) GetOrganization(id string) (*Organization, error) {
 
 // FindOrganizations finds organizations, filtered by query parameters.
 func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err error) {
-	link := fmt.Sprintf("%s/organizations/?%s", api.Endpoint, vs.Encode())
+	link := fmt.Sprintf("%s/organizations/?%s", api.endpoint, vs.Encode())
 	resp, err := http.Get(link) // move to pester or other retry library
 	if err != nil {
 		return nil, err
@@ -223,7 +223,7 @@ func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
 	if strings.HasPrefix(id, "http") {
 		link = id
 	} else {
-		link = fmt.Sprintf("%s/treenodes/%s", api.Endpoint, id)
+		link = fmt.Sprintf("%s/treenodes/%s", api.endpoint, id)
 	}
 	resp, err := http.Get(link) // move to pester or other retry library
 	if err != nil {
@@ -261,7 +261,7 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	// re_deposit_modified_at__lte=&modified_at=&modified_at__gt=&modified_at__gte=&mod
 	// ified_at__lt=&modified_at__lte=&uploaded_by=&comment__contains=&comment__endswit
 	// h=&comment=&comment__icontains=&comment__iexact=&comment__startswith=&parent=
-	link := fmt.Sprintf("%s/treenodes/?%s", api.Endpoint, vs.Encode())
+	link := fmt.Sprintf("%s/treenodes/?%s", api.endpoint, vs.Encode())
 	// log.Println(link)
 	resp, err := http.Get(link) // move to pester or other retry library
 	if err != nil {

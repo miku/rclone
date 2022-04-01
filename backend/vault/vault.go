@@ -231,8 +231,8 @@ func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, 
 		root: root,
 		opt:  *opts,
 		api: &Api{
-			Endpoint: opts.Endpoint,
-			Username: opts.Username,
+			endpoint: opts.Endpoint,
+			username: opts.Username,
 			srv:      rest.NewClient(fshttp.NewClient(ctx)),
 		},
 	}, nil
@@ -336,11 +336,11 @@ func (o *Object) String() string {
 	return o.treeNode.Name
 }
 
-// path turns the treenode path field into a filelike path string using the
+// absolutePath turns the treenode path field into a filelike path string using the
 // name of the treenodes.
 //
 // Note that this returns the full path of the node, not the relative path.
-func (o *Object) path() string {
+func (o *Object) absolutePath() string {
 	var (
 		labels   = o.treeNode.Path // "6", "6.22", "6.22.87", ...
 		segments = strings.Split(labels, ".")
@@ -372,14 +372,14 @@ func (o *Object) path() string {
 	return v
 }
 
-// relativePath returns the path relative to a given root, given as a string
+// path returns the path relative to a given root, given as a string
 // like "/a/b" etc.
-func (o *Object) relativePath() string {
+func (o *Object) path() string {
 	var root, relpath string
 	if root = o.fs.root; root == "" {
 		root = "/"
 	}
-	relpath = strings.Replace(o.path(), root, "", 1)
+	relpath = strings.Replace(o.absolutePath(), root, "", 1)
 	relpath = strings.TrimLeft(relpath, "/")
 	return relpath
 }
@@ -387,7 +387,7 @@ func (o *Object) relativePath() string {
 // Remote turns a treenode into a path. This can fail silently. Note: The
 // remote name needs to be relative to the Fs.root, not the absolute path.
 func (o *Object) Remote() string {
-	return o.relativePath()
+	return o.path()
 }
 
 // ModTime returns the modification time of the object or epoch, if the time is not available.
@@ -441,61 +441,6 @@ func (o *Object) Remove(ctx context.Context) error {
 	return nil
 }
 
-// func (f *Fs) listRoot(ctx context.Context) (entries fs.DirEntries, err error) {
-// 	return nil, nil
-// }
-
-// List lists entries. If dir is a root, we would need to iterate over too many
-// entries, basically all collection names and all top level items. We need a
-// limit here, e.g. return the most recently modified 10000 items.
-//
-// If dir is an items, return all files in the item. If dir is a collection,
-// return both files, collections and items.
-// func (f *Fs) List(ctx context.Context, dir string) (entries fs.DirEntries, err error) {
-// 	// List the objects and directories in dir into entries.  The
-// 	// entries can be returned in any order but should be for a
-// 	// complete directory.
-// 	//
-// 	// dir should be "" to list the root, and should not have
-// 	// trailing slashes.
-// 	//
-// 	// This should return ErrDirNotFound if the directory isn't
-// 	// found.
-// 	if dir == "" {
-// 		return f.listRoot(ctx)
-// 	}
-// 	return nil, nil
-// }
-
-// NewObject finds the Object at remote.  If it can't be found
-// it returns the error ErrorObjectNotFound.
-//
-// If remote points to a directory then it should return
-// ErrorIsDir if possible without doing any extra work,
-// otherwise ErrorObjectNotFound.
-// NewObject(ctx context.Context, remote string) (Object, error)
-
-// Put in to the remote path with the modTime given of the given size
-//
-// When called from outside an Fs by rclone, src.Size() will always be >= 0.
-// But for unknown-sized objects (indicated by src.Size() == -1), Put should either
-// return an error or upload it properly (rather than e.g. calling panic).
-//
-// May create the object even if it returns an error - if so
-// will return the object and the error, otherwise will return
-// nil and the error
-// Put(ctx context.Context, in io.Reader, src ObjectInfo, options ...OpenOption) (Object, error)
-
-// Mkdir makes the directory (container, bucket)
-//
-// Shouldn't return an error if it already exists
-// Mkdir(ctx context.Context, dir string) error
-
-// Rmdir removes the directory (container, bucket) if empty
-//
-// Return an error if it doesn't exist or isn't empty
-// Rmdir(ctx context.Context, dir string) error
-
 // List the objects and directories in dir into entries.  The
 // entries can be returned in any order but should be for a
 // complete directory.
@@ -507,12 +452,12 @@ func (o *Object) Remove(ctx context.Context) error {
 // found.
 func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 	var (
-		full    = filepath.Join(f.root, dir)
+		absPath = filepath.Join(f.root, dir)
 		nodes   []*TreeNode
 		entries fs.DirEntries
 		entry   fs.DirEntry
 	)
-	t, err := f.api.resolvePath(full)
+	t, err := f.api.resolvePath(absPath)
 	if err != nil {
 		return nil, fs.ErrorDirNotFound
 	}
