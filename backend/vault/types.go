@@ -6,16 +6,22 @@ package vault
 // TODO: could use a "dircache" locally to speed up operations (with some low
 // ttl, like 60s)
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/http/cookiejar"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/antchfx/htmlquery"
 	"github.com/rclone/rclone/lib/rest"
 )
 
@@ -28,6 +34,7 @@ var (
 type Api struct {
 	endpoint string       // e.g. http://127.0.0.1:8000/api
 	username string       // vault username, required for various operations
+	password string       // vault password
 	srv      *rest.Client // the connection to the vault server
 }
 
@@ -43,6 +50,65 @@ func (e *ApiError) Error() string {
 	} else {
 		return fmt.Sprintf("api error: %s", e.Message)
 	}
+}
+
+// Login uses the django login page to obtain a session id.
+func (api *Api) Login() error {
+	// http://127.0.0.1:8000/accounts/login/
+	loginURL := strings.Replace(api.endpoint, "/api", "/accounts/login/", 1)
+	resp, err := http.Get(loginURL)
+	if err != nil {
+		return fmt.Errorf("cannot access login url: %w")
+	}
+	defer resp.Body.Close()
+	// Parse out the CSRF token: <input type="hidden"
+	// name="csrfmiddlewaretoken"
+	// value="CCBQ9qqG3ylgR1MaYBc6UCw4tlxR7rhP2Qs4uvIMAf1h7Dd4xtv5azTQJRgJ1y2I">
+	//
+	// TODO: move to a token based auth for the API:
+	// https://stackoverflow.com/q/21317899/89391
+	doc, err := htmlquery.Parse(resp.Body)
+	if err != nil {
+		return fmt.Errorf("html: %w", err)
+	}
+	token := htmlquery.SelectAttr(
+		htmlquery.FindOne(doc, `//input[@name="csrfmiddlewaretoken"]`),
+		"value",
+	)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return err
+	}
+	u, err := url.Parse(loginURL)
+	if err != nil {
+		return err
+	}
+	jar.SetCookies(u, []*http.Cookie{&http.Cookie{
+		Name:  "csrftoken",
+		Value: token,
+	}})
+	client := http.Client{
+		Jar:     jar,
+		Timeout: 5 * time.Second,
+	}
+	vs := url.Values{}
+	vs.Set("username", api.username)
+	vs.Set("password", api.password)
+	vs.Set("csrfmiddlewaretoken", token)
+	resp, err = client.PostForm(loginURL, vs)
+	if err != nil {
+		return fmt.Errorf("post: %w", err)
+	}
+	defer resp.Body.Close()
+	b, err := httputil.DumpResponse(resp, false)
+	if err != nil {
+		return err
+	}
+	log.Println(string(b))
+	for _, c := range jar.Cookies(u) {
+		api.srv.SetCookie(c)
+	}
+	return nil
 }
 
 // root returns the root treenode for the api user, that is their
@@ -141,13 +207,21 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 	// _name__endswith=&last_name=&last_name__icontains=&last_name__iexact=&last_name__
 	// startswith=&date_joined=&date_joined__gt=&date_joined__gte=&date_joined__lt=&dat
 	// e_joined__lte=&organization=
-	var (
-		link       = fmt.Sprintf("%s/users/?%s", api.endpoint, vs.Encode())
-		resp, herr = http.Get(link) // move to pester or other retry library
-	)
-	// log.Println(link)
-	if herr != nil {
-		return nil, herr
+	// var (
+	// 	link       = fmt.Sprintf("%s/users/?%s", api.endpoint, vs.Encode())
+	// 	resp, herr = http.Get(link) // move to pester or other retry library
+	// )
+	// if herr != nil {
+	// 	return nil, herr
+	// }
+	opts := &rest.Opts{
+		Method:     "GET",
+		Path:       "/users/",
+		Parameters: vs,
+	}
+	resp, err := api.srv.Call(context.Background(), opts)
+	if err != nil {
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {

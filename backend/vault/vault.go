@@ -156,6 +156,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
@@ -203,6 +204,7 @@ type Fs struct {
 // Options for this backend.
 type Options struct {
 	Username string `config:"username"`
+	Password string `config:"password"`
 	Endpoint string `config:"url"`
 }
 
@@ -214,8 +216,8 @@ type Object struct {
 	treeNode *TreeNode // Contains additional metadata, like mod time or hash.
 }
 
-// DirLike is either a organization, collection or folder - or anything that is
-// not a file.
+// DirLike is either a organization, collection or folder, anything that is not
+// a file.
 type DirLike struct {
 	Object
 }
@@ -226,15 +228,24 @@ func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, 
 	if err != nil {
 		return nil, err
 	}
+	api := &Api{
+		endpoint: opts.Endpoint,
+		username: opts.Username,
+		password: opts.Password,
+		srv:      rest.NewClient(fshttp.NewClient(ctx)).SetRoot(opts.Endpoint),
+	}
+	if err := api.Login(); err != nil {
+		return nil, err
+	}
+	result, err := api.FindUsers(url.Values{
+		"username": []string{"admin"},
+	})
+	log.Println(result, err)
 	return &Fs{
 		name: name,
 		root: root,
 		opt:  *opts,
-		api: &Api{
-			endpoint: opts.Endpoint,
-			username: opts.Username,
-			srv:      rest.NewClient(fshttp.NewClient(ctx)),
-		},
+		api:  api,
 	}, nil
 }
 
