@@ -14,7 +14,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
@@ -100,11 +99,6 @@ func (api *Api) Login() error {
 		return fmt.Errorf("post: %w", err)
 	}
 	defer resp.Body.Close()
-	b, err := httputil.DumpResponse(resp, false)
-	if err != nil {
-		return err
-	}
-	log.Println(string(b))
 	for _, c := range jar.Cookies(u) {
 		api.srv.SetCookie(c)
 	}
@@ -129,17 +123,18 @@ func (api *Api) root() (*TreeNode, error) {
 	if u.Organization == "" {
 		return nil, &ApiError{Message: "user does not belong to an organization"}
 	}
-	organization, err := api.GetOrganization(u.Organization)
+	organization, err := api.GetOrganization(u.OrganizationIdentifier())
 	if err != nil {
 		return nil, err
 	}
-	return api.GetTreeNode(organization.TreeNode)
+	return api.GetTreeNode(organization.TreeNodeIdentifier())
 }
 
 // resolvePath takes a path and turns it into a TreeNode representing that
 // object (org, collection, folder, file). A path is case sensitive.
 func (api *Api) resolvePath(path string) (*TreeNode, error) {
 	t, err := api.root()
+	log.Println(err)
 	if err != nil {
 		return nil, err
 	}
@@ -243,13 +238,12 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 // GetOrganization returns a single organization by id. If id look like a URL,
 // use it directly.
 func (api *Api) GetOrganization(id string) (*Organization, error) {
-	var link string
-	if strings.HasPrefix(id, "http") {
-		link = id
-	} else {
-		link = fmt.Sprintf("%s/organizations/%s", api.endpoint, id)
+	opts := &rest.Opts{
+		Method: "GET",
+		Path:   fmt.Sprintf("/organizations/%v", id),
 	}
-	resp, err := http.Get(link) // move to pester or other retry library
+	resp, err := api.srv.Call(context.Background(), opts)
+	// XX: resp, err := http.Get(link) // move to pester or other retry library
 	if err != nil {
 		return nil, err
 	}
@@ -269,8 +263,14 @@ func (api *Api) GetOrganization(id string) (*Organization, error) {
 
 // FindOrganizations finds organizations, filtered by query parameters.
 func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err error) {
-	link := fmt.Sprintf("%s/organizations/?%s", api.endpoint, vs.Encode())
-	resp, err := http.Get(link) // move to pester or other retry library
+	// XX: link := fmt.Sprintf("%s/organizations/?%s", api.endpoint, vs.Encode())
+	// XX: resp, err := http.Get(link) // move to pester or other retry library
+	opts := &rest.Opts{
+		Method:     "GET",
+		Path:       "/organizations/",
+		Parameters: vs,
+	}
+	resp, err := api.srv.Call(context.Background(), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -293,13 +293,18 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 
 // GetTreeNode returns a single treenode by id.
 func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
-	var link string
-	if strings.HasPrefix(id, "http") {
-		link = id
-	} else {
-		link = fmt.Sprintf("%s/treenodes/%s", api.endpoint, id)
+	// var link string
+	// if strings.HasPrefix(id, "http") {
+	// 	link = id
+	// } else {
+	// 	link = fmt.Sprintf("%s/treenodes/%s", api.endpoint, id)
+	// }
+	// resp, err := http.Get(link) // move to pester or other retry library
+	opts := &rest.Opts{
+		Method: "GET",
+		Path:   fmt.Sprintf("/treenodes/%v", id),
 	}
-	resp, err := http.Get(link) // move to pester or other retry library
+	resp, err := api.srv.Call(context.Background(), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -335,9 +340,16 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	// re_deposit_modified_at__lte=&modified_at=&modified_at__gt=&modified_at__gte=&mod
 	// ified_at__lt=&modified_at__lte=&uploaded_by=&comment__contains=&comment__endswit
 	// h=&comment=&comment__icontains=&comment__iexact=&comment__startswith=&parent=
-	link := fmt.Sprintf("%s/treenodes/?%s", api.endpoint, vs.Encode())
+	// XX: link := fmt.Sprintf("%s/treenodes/?%s", api.endpoint, vs.Encode())
 	// log.Println(link)
-	resp, err := http.Get(link) // move to pester or other retry library
+	// TODO: api.srv.Call(context.Background(), &rest.Opts{})
+	resp, err := api.srv.Call(context.Background(), &rest.Opts{
+		Method:     "GET",
+		Path:       "/treenodes/",
+		Parameters: vs,
+	})
+
+	// XX: resp, err := http.Get(link) // move to srv
 	if err != nil {
 		return nil, err
 	}
@@ -373,6 +385,24 @@ type User struct {
 	Username     string `json:"username"`
 }
 
+func (u *User) OrganizationIdentifier() string {
+	if u.Organization == "" {
+		return u.Organization
+	}
+	if !strings.HasPrefix(u.Organization, "http") {
+		return u.Organization
+	}
+	parts := strings.Split(strings.TrimRight(u.Organization, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	candidate := parts[len(parts)-1]
+	if _, err := strconv.Atoi(candidate); err != nil {
+		return ""
+	}
+	return candidate
+}
+
 // UserList from API, via JSONGen.
 type UserList struct {
 	Count    int64       `json:"count"`
@@ -388,6 +418,24 @@ type Organization struct {
 	QuotaBytes int64  `json:"quota_bytes"`
 	TreeNode   string `json:"tree_node"`
 	Url        string `json:"url"`
+}
+
+func (o *Organization) TreeNodeIdentifier() string {
+	if o.TreeNode == "" {
+		return o.TreeNode
+	}
+	if !strings.HasPrefix(o.TreeNode, "http") {
+		return o.TreeNode
+	}
+	parts := strings.Split(strings.TrimRight(o.TreeNode, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	candidate := parts[len(parts)-1]
+	if _, err := strconv.Atoi(candidate); err != nil {
+		return ""
+	}
+	return candidate
 }
 
 // OrganizationList contains a list of organizations, e.g. from search.
