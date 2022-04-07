@@ -7,7 +7,6 @@ package vault
 // ttl, like 60s)
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +33,7 @@ type Api struct {
 	endpoint string       // e.g. http://127.0.0.1:8000/api
 	username string       // vault username, required for various operations
 	password string       // vault password
-	srv      *rest.Client // the connection to the vault server
+	srv      *rest.Client // vault api wrapper
 }
 
 // ApiError for allows to transmit HTTP code and message.
@@ -43,6 +42,7 @@ type ApiError struct {
 	Message    string
 }
 
+// Error renders a generic api error.
 func (e *ApiError) Error() string {
 	if e.StatusCode != 0 {
 		return fmt.Sprintf("api error: HTTP %d: %s", e.StatusCode, e.Message)
@@ -99,10 +99,13 @@ func (api *Api) Login() error {
 		return fmt.Errorf("post: %w", err)
 	}
 	defer resp.Body.Close()
-	for _, c := range jar.Cookies(u) {
-		api.srv.SetCookie(c)
-	}
+	api.srv.SetCookie(jar.Cookies(u)...)
 	return nil
+}
+
+// Logout clears any past cookie state.
+func (api *Api) Logout() {
+	api.srv.SetHeader("Cookie", "")
 }
 
 // root returns the root treenode for the api user, that is their
@@ -130,13 +133,16 @@ func (api *Api) root() (*TreeNode, error) {
 	return api.GetTreeNode(organization.TreeNodeIdentifier())
 }
 
-// resolvePath takes a path and turns it into a TreeNode representing that
-// object (org, collection, folder, file). A path is case sensitive.
+// resolvePath takes a case sensitive path string (like /a/b/c) and turns it
+// into a TreeNode representing that object (organization, collection, folder, file).
 func (api *Api) resolvePath(path string) (*TreeNode, error) {
 	t, err := api.root()
-	log.Println(err)
 	if err != nil {
 		return nil, err
+	}
+	// This method only resolves absolute paths.
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
 	}
 	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
 	segments := strings.Split(strings.TrimRight(path, "/"), "/")[1:]
@@ -158,6 +164,7 @@ func (api *Api) resolvePath(path string) (*TreeNode, error) {
 		}
 		t, segments = ts[0], segments[1:]
 	}
+	log.Printf("[vault] resolved %v to %v", path, t.Id)
 	return t, nil
 }
 
@@ -214,7 +221,8 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 		Path:       "/users/",
 		Parameters: vs,
 	}
-	resp, err := api.srv.Call(context.Background(), opts)
+	var doc UserList
+	resp, err := api.srv.CallJSON(context.Background(), opts, nil, &doc)
 	if err != nil {
 		return nil, err
 	}
@@ -222,14 +230,7 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 	if resp.StatusCode != 200 {
 		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "users"}
 	}
-	var (
-		dec  = json.NewDecoder(resp.Body)
-		list UserList
-	)
-	if err := dec.Decode(&list); err != nil {
-		return nil, err
-	}
-	for _, v := range list.Results {
+	for _, v := range doc.Results {
 		result = append(result, v)
 	}
 	return result, nil
@@ -242,21 +243,14 @@ func (api *Api) GetOrganization(id string) (*Organization, error) {
 		Method: "GET",
 		Path:   fmt.Sprintf("/organizations/%v", id),
 	}
-	resp, err := api.srv.Call(context.Background(), opts)
-	// XX: resp, err := http.Get(link) // move to pester or other retry library
+	var doc Organization
+	resp, err := api.srv.CallJSON(context.Background(), opts, nil, &doc)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "organization"}
-	}
-	var (
-		dec = json.NewDecoder(resp.Body)
-		doc Organization
-	)
-	if err := dec.Decode(&doc); err != nil {
-		return nil, err
 	}
 	return &doc, nil
 }
@@ -270,7 +264,8 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 		Path:       "/organizations/",
 		Parameters: vs,
 	}
-	resp, err := api.srv.Call(context.Background(), opts)
+	var doc OrganizationList
+	resp, err := api.srv.CallJSON(context.Background(), opts, nil, &doc)
 	if err != nil {
 		return nil, err
 	}
@@ -278,14 +273,7 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 	if resp.StatusCode != 200 {
 		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "organizations"}
 	}
-	var (
-		dec  = json.NewDecoder(resp.Body)
-		list OrganizationList
-	)
-	if err := dec.Decode(&list); err != nil {
-		return nil, err
-	}
-	for _, v := range list.Results {
+	for _, v := range doc.Results {
 		result = append(result, v)
 	}
 	return result, nil
@@ -293,31 +281,18 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 
 // GetTreeNode returns a single treenode by id.
 func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
-	// var link string
-	// if strings.HasPrefix(id, "http") {
-	// 	link = id
-	// } else {
-	// 	link = fmt.Sprintf("%s/treenodes/%s", api.endpoint, id)
-	// }
-	// resp, err := http.Get(link) // move to pester or other retry library
 	opts := &rest.Opts{
 		Method: "GET",
 		Path:   fmt.Sprintf("/treenodes/%v", id),
 	}
-	resp, err := api.srv.Call(context.Background(), opts)
+	var doc TreeNode
+	resp, err := api.srv.CallJSON(context.Background(), opts, nil, &doc)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "treenode"}
-	}
-	var (
-		dec = json.NewDecoder(resp.Body)
-		doc TreeNode
-	)
-	if err := dec.Decode(&doc); err != nil {
-		return nil, err
 	}
 	return &doc, nil
 }
@@ -340,16 +315,12 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	// re_deposit_modified_at__lte=&modified_at=&modified_at__gt=&modified_at__gte=&mod
 	// ified_at__lt=&modified_at__lte=&uploaded_by=&comment__contains=&comment__endswit
 	// h=&comment=&comment__icontains=&comment__iexact=&comment__startswith=&parent=
-	// XX: link := fmt.Sprintf("%s/treenodes/?%s", api.endpoint, vs.Encode())
-	// log.Println(link)
-	// TODO: api.srv.Call(context.Background(), &rest.Opts{})
-	resp, err := api.srv.Call(context.Background(), &rest.Opts{
+	var doc TreeNodeList
+	resp, err := api.srv.CallJSON(context.Background(), &rest.Opts{
 		Method:     "GET",
 		Path:       "/treenodes/",
 		Parameters: vs,
-	})
-
-	// XX: resp, err := http.Get(link) // move to srv
+	}, nil, &doc)
 	if err != nil {
 		return nil, err
 	}
@@ -357,17 +328,10 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	if resp.StatusCode != 200 {
 		return nil, &ApiError{StatusCode: resp.StatusCode, Message: "treenodes"}
 	}
-	var (
-		dec  = json.NewDecoder(resp.Body)
-		list TreeNodeList
-	)
-	if err := dec.Decode(&list); err != nil {
-		return nil, err
-	}
-	for _, v := range list.Results {
+	for _, v := range doc.Results {
 		result = append(result, v)
 	}
-	// Any more results?
+	// TODO: Any more results?
 	return result, nil
 }
 

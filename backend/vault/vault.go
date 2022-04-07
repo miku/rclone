@@ -155,6 +155,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"path"
 	"path/filepath"
@@ -186,6 +187,11 @@ func init() {
 				Help:    "vault API URL",
 				Default: "http://localhost:8000/api",
 			},
+			{
+				Name:    "debug",
+				Help:    "increase output for debugging",
+				Default: false,
+			},
 		},
 	})
 }
@@ -198,11 +204,12 @@ type Fs struct {
 	api  *Api    // vault API wrapper
 }
 
-// Options for this backend.
+// Options parsed for this backend.
 type Options struct {
 	Username string `config:"username"`
 	Password string `config:"password"`
 	Endpoint string `config:"url"`
+	Debug    bool   `config:"debug"`
 }
 
 // Object represents a vault object, which is defined by a treeNode. Implements
@@ -224,6 +231,9 @@ func NewFs(ctx context.Context, name, root string, cm configmap.Mapper) (fs.Fs, 
 	err := configstruct.Set(cm, opts)
 	if err != nil {
 		return nil, err
+	}
+	if !opts.Debug {
+		log.SetOutput(ioutil.Discard)
 	}
 	api := &Api{
 		endpoint: opts.Endpoint,
