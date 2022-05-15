@@ -1,6 +1,12 @@
 package api
 
-import "net/url"
+import (
+	"context"
+	"fmt"
+	"net/url"
+
+	"github.com/rclone/rclone/lib/rest"
+)
 
 // Organization represents a single document.
 type Organization struct {
@@ -39,7 +45,7 @@ type Collection struct {
 	URL               string `json:"url"` // http://127.0.0.1:8000/api/collections/1/
 }
 
-// TreeNode is a single document.
+// TreeNode is node in the filesystem tree.
 type TreeNode struct {
 	Comment              interface{} `json:"comment"`
 	ContentURL           interface{} `json:"content_url"`
@@ -131,7 +137,102 @@ func (api *Api) GetTreeNode(id string) (*TreeNode, error)         {}
 // Find methods
 // ------------
 
-func (api *Api) FindUsers(vs url.Values) ([]*User, error)                 {}
-func (api *Api) FindOrganizations(vs url.Values) ([]*Organization, error) {}
-func (api *Api) FindCollections(vs url.Values) ([]*Collection, error)     {}
-func (api *Api) FindTreeNodes(vs url.Values) ([]*TreeNode, error)         {}
+func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
+	opts := rest.Opts{
+		Method:     "GET",
+		Path:       "/users/",
+		Parameters: vs,
+	}
+	var doc UserList
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: users got %v", resp.StatusCode)
+	}
+	for i, v := range doc.Results {
+		result = append(result, v)
+	}
+	return result, nil
+}
+
+func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err error) {
+	opts := rest.Opts{
+		Method:     "GET",
+		Path:       "/organizations/",
+		Parameters: vs,
+	}
+	var doc OrganizationList
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: organizations got %v", resp.StatusCode)
+	}
+	for i, v := range doc.Results {
+		result = append(result, v)
+	}
+	return result, nil
+}
+
+func (api *Api) FindCollections(vs url.Values) (result []*Collection, err error) {
+	opts := rest.Opts{
+		Method:     "GET",
+		Path:       "/collections/",
+		Parameters: vs,
+	}
+	var doc CollectionList
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: collections got %v", resp.StatusCode)
+	}
+	for i, v := range doc.Results {
+		result = append(result, v)
+	}
+	return result, nil
+}
+
+func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
+	// ?id=1&id__gt=&id__gte=&id__lt=&id__lte=&node_type__contains=&node_type__
+	// endswith=&node_type=&node_type__icontains=&node_type__iexact=&node_type__startsw
+	// ith=&path__contains=&path__endswith=&path=&path__icontains=&path__iexact=&path__
+	// startswith=&name__contains=&name__endswith=&name=&name__icontains=&name__iexact=
+	// &name__startswith=&md5_sum__contains=&md5_sum__endswith=&md5_sum=&md5_sum__icont
+	// ains=&md5_sum__iexact=&md5_sum__startswith=&sha1_sum__contains=&sha1_sum__endswi
+	// th=&sha1_sum=&sha1_sum__icontains=&sha1_sum__iexact=&sha1_sum__startswith=&sha25
+	// 6_sum__contains=&sha256_sum__endswith=&sha256_sum=&sha256_sum__icontains=&sha256
+	// _sum__iexact=&sha256_sum__startswith=&size=&size__gt=&size__gte=&size__lt=&size_
+	// _lte=&file_type__contains=&file_type__endswith=&file_type=&file_type__icontains=
+	// &file_type__iexact=&file_type__startswith=&uploaded_at=&uploaded_at__gt=&uploade
+	// d_at__gte=&uploaded_at__lt=&uploaded_at__lte=&pre_deposit_modified_at=&pre_depos
+	// it_modified_at__gt=&pre_deposit_modified_at__gte=&pre_deposit_modified_at__lt=&p
+	// re_deposit_modified_at__lte=&modified_at=&modified_at__gt=&modified_at__gte=&mod
+	// ified_at__lt=&modified_at__lte=&uploaded_by=&comment__contains=&comment__endswit
+	// h=&comment=&comment__icontains=&comment__iexact=&comment__startswith=&parent=
+	opts := rest.Opts{
+		Method:     "GET",
+		Path:       "/treenodes/",
+		Parameters: vs,
+	}
+	var doc TreeNodeList
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: treenodes got %v", resp.StatusCode)
+	}
+	for i, v := range doc.Results {
+		result = append(result, v)
+	}
+	return result, nil
+}
