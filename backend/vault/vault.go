@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/rclone/rclone/fs"
@@ -62,14 +63,27 @@ func (fs *Fs) Features() *fs.Features   { return fs.features }
 // Fs Ops
 // ------
 
-func (fs *Fs) List() {}
-func (fs *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
-	// TODO: Only needs to return an object, if the remote exists and is a file.
-	// TODO: Resolve remote to treenode and create an object.
+func (fs *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
+	// TODO: only need to list, if dir is a collection of folder
 }
-func (fs *Fs) Put()   {}
-func (fs *Fs) Mkdir() {}
-func (fs *Fs) Rmdir() {}
+func (fs *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
+	// TODO: only needs to return an object, if the remote exists and is a file
+	// TODO: resolve remote to treenode and create an object
+}
+func (fs *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOptions) (fs.Object, error) {
+	// TODO: src.Remote will be the "filename" and fs.root will be the dst
+	// TODO: check if dst is actually a collection of folder
+	// TODO: check if fs.root + "filename" already exists
+	// TODO: start with a deposit per file approach first
+	// TODO: register deposit for file, then use flow chunk endpoint to upload the data
+	// TODO: at some point, we should have a treenode for the upload, return object
+}
+func (fs *Fs) Mkdir(ctx context.Context, dir string) error {
+	// TODO: create collection or create folder
+}
+func (fs *Fs) Rmdir(ctx context.Context, dir string) error {
+	// TODO: postpone
+}
 
 // Object
 // ------
