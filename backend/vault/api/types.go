@@ -129,21 +129,94 @@ type TreeNodeList struct {
 // Get methods
 // -----------
 
-func (api *Api) GetUser(id string) (*User, error)                 {}
-func (api *Api) GetOrganization(id string) (*Organization, error) {}
-func (api *Api) GetCollection(id string) (*Collection, error)     {}
-func (api *Api) GetTreeNode(id string) (*TreeNode, error)         {}
+func (api *Api) GetUser(id string) (*User, error) {
+	var (
+		opts = rest.Opts{
+			Method: "GET",
+			Path:   fmt.Sprintf("/users/%v/", id),
+		}
+		doc User
+	)
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: users got %v", resp.StatusCode)
+	}
+	return &doc, nil
+}
+
+func (api *Api) GetOrganization(id string) (*Organization, error) {
+	var (
+		opts = rest.Opts{
+			Method: "GET",
+			Path:   fmt.Sprintf("/organizations/%v/", id),
+		}
+		doc Organization
+	)
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: organizations got %v", resp.StatusCode)
+	}
+	return &doc, nil
+}
+
+func (api *Api) GetCollection(id string) (*Collection, error) {
+	var (
+		opts = rest.Opts{
+			Method: "GET",
+			Path:   fmt.Sprintf("/collections/%v/", id),
+		}
+		doc Collection
+	)
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: collections got %v", resp.StatusCode)
+	}
+	return &doc, nil
+}
+
+func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
+	var (
+		opts = rest.Opts{
+			Method: "GET",
+			Path:   fmt.Sprintf("/treenodes/%v/", id),
+		}
+		doc TreeNode
+	)
+	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: treenodes got %v", resp.StatusCode)
+	}
+	return &doc, nil
+}
 
 // Find methods
 // ------------
 
 func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
-	opts := rest.Opts{
-		Method:     "GET",
-		Path:       "/users/",
-		Parameters: vs,
-	}
-	var doc UserList
+	var (
+		opts = rest.Opts{
+			Method:     "GET",
+			Path:       "/users/",
+			Parameters: vs,
+		}
+		doc UserList
+	)
 	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
 	if err != nil {
 		return nil, err
@@ -159,12 +232,14 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 }
 
 func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err error) {
-	opts := rest.Opts{
-		Method:     "GET",
-		Path:       "/organizations/",
-		Parameters: vs,
-	}
-	var doc OrganizationList
+	var (
+		opts = rest.Opts{
+			Method:     "GET",
+			Path:       "/organizations/",
+			Parameters: vs,
+		}
+		doc OrganizationList
+	)
 	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
 	if err != nil {
 		return nil, err
@@ -180,12 +255,14 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 }
 
 func (api *Api) FindCollections(vs url.Values) (result []*Collection, err error) {
-	opts := rest.Opts{
-		Method:     "GET",
-		Path:       "/collections/",
-		Parameters: vs,
-	}
-	var doc CollectionList
+	var (
+		opts = rest.Opts{
+			Method:     "GET",
+			Path:       "/collections/",
+			Parameters: vs,
+		}
+		doc CollectionList
+	)
 	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
 	if err != nil {
 		return nil, err
@@ -217,12 +294,14 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	// re_deposit_modified_at__lte=&modified_at=&modified_at__gt=&modified_at__gte=&mod
 	// ified_at__lt=&modified_at__lte=&uploaded_by=&comment__contains=&comment__endswit
 	// h=&comment=&comment__icontains=&comment__iexact=&comment__startswith=&parent=
-	opts := rest.Opts{
-		Method:     "GET",
-		Path:       "/treenodes/",
-		Parameters: vs,
-	}
-	var doc TreeNodeList
+	var (
+		opts = rest.Opts{
+			Method:     "GET",
+			Path:       "/treenodes/",
+			Parameters: vs,
+		}
+		doc TreeNodeList
+	)
 	resp, err := api.Srv.CallJSON(context.TODO(), &opts, nil, &doc)
 	if err != nil {
 		return nil, err
