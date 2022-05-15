@@ -3,15 +3,23 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httputil"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/antchfx/htmlquery"
 	"github.com/rclone/rclone/fs/fshttp"
 	"github.com/rclone/rclone/lib/rest"
 )
+
+// maxResponseBody limit in bytes when reading a response body.
+const maxResponseBody = 1 << 24
 
 type Api struct {
 	Endpoint  string
@@ -34,7 +42,8 @@ func New(endpoint, username, password string) *Api {
 	}
 }
 
-// Login sets up a session and prepares the rest client.
+// Login sets up a session, which should be valid for the client until logout
+// (or timeout).
 func (api *Api) Login() error {
 	var u *url.URL
 	if u, err := url.Parse(api.Endpoint); err != nil {
@@ -70,9 +79,37 @@ func (api *Api) Login() error {
 		Jar:     jar,
 		Timeout: api.timeout,
 	}
-	// ...
+	data := url.Values{}
+	data.Set("username", api.Username)
+	data.Set("password", api.Password)
+	data.Set("csrfmiddlewaretoken", token)
+	req, err := http.NewRequest("POST", loginURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencode")
+	req.Header.Set("Referer", loginURL)
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("login: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		b, err := httputil.DumpResponse(resp, true)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("login: %v", string(b))
+	}
+	api.srv.SetCookie(jar.Cookies(u))
+	return nil
 }
-func (api *Api) Logout() error                                            {}
+
+// Logout drops the session.
+func (api *Api) Logout() error {
+	api.srv.SetHeader("Cookie", "")
+
+}
 func (api *Api) CreateCollection(name string) error                       {}
 func (api *Api) Exists(path string) (bool, error)                         {}
 func (api *Api) List(path string) ([]string, error)                       {}
@@ -85,9 +122,36 @@ func (api *Api) GetOrganization(id string)                                {}
 func (api *Api) GetUser(id string)                                        {}
 func (api *Api) GetTreeNode(id string)                                    {}
 
+// csrfToken retrieves a CSRF token. Returns an empty string on failure.
 func (api *Api) csrfToken() string {
-	// TODO: obtain csrf token, required for various API operations
+	ctx := context.Background()
+	opts := rest.Opts{
+		Method: "GET",
+		Path:   "/users/", // any path valid path should do
+		ExtraHeaders: map[string]string{
+			"Accept": "text/html",
+		},
+	}
+	resp, err := api.srv.Call(ctx, &opts)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return ""
+	}
+	b, err := ioutil.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
+	if err != nil {
+		return ""
+	}
+	re := regexp.MustCompile(`csrfToken:[ ]*"([^"]*)"`)
+	matches := re.FindStringSubmatch(string(b))
+	if len(matches) == 2 {
+		return matches[1]
+	}
+	return ""
 }
+
 func (api *Api) root() (*TreeNode, error) {
 	// TODO: return the root treenode, i.e. the treenode for the organization
 	// the user belongs to
