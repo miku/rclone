@@ -165,7 +165,7 @@ func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 // ErrorIsDir if possible without doing any extra work,
 // otherwise ErrorObjectNotFound.
 func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
-	fs.Debugf(f, "new object at %v", remote)
+	fs.Debugf(f, "new object at %v (%v)", remote, f.absPath(remote))
 	t, err := f.api.ResolvePath(f.absPath(remote))
 	if err != nil {
 		return nil, err
