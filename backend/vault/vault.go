@@ -43,6 +43,7 @@ func init() {
 	})
 }
 
+// NewFS sets up a new filesystem. TODO: check for API compat here.
 func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, error) {
 	var opt Options
 	err := configstruct.Set(m, &opt)
@@ -192,6 +193,8 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 	if filename, err = TempfileFromReader(in); err != nil {
 		return nil, err
 	}
+	// TODO: with retries, we may add the same object twice or more; check that
+	// each batch contains unique elements
 	f.batcher.Add(&batchItem{
 		root:     f.root,
 		filename: filename,
