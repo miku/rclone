@@ -22,8 +22,11 @@ import (
 	"github.com/rclone/rclone/lib/rest"
 )
 
-// maxResponseBody limit in bytes when reading a response body.
-const maxResponseBody = 1 << 24
+const (
+	// maxResponseBody limit in bytes when reading a response body.
+	maxResponseBody    = 1 << 24
+	VaultVersionHeader = "X-VAULT-API-VERSION"
+)
 
 var (
 	ErrUserNotFound   = errors.New("user not found")
@@ -31,10 +34,10 @@ var (
 )
 
 type Api struct {
-	Endpoint string
-	Username string
-	Password string
-	Version  string
+	Endpoint         string
+	Username         string
+	Password         string
+	VersionSupported string
 
 	client    *rest.Client
 	loginPath string
@@ -45,19 +48,33 @@ type Api struct {
 func New(endpoint, username, password string) *Api {
 	ctx := context.Background()
 	return &Api{
-		Endpoint:  endpoint,
-		Username:  username,
-		Password:  password,
-		Version:   "1",
-		client:    rest.NewClient(fshttp.NewClient(ctx)).SetRoot(endpoint),
-		loginPath: "/accounts/login/", // trailing slash required, cf. django APPEND_SLASH
-		timeout:   5 * time.Second,
-		cache:     cache.New(),
+		Endpoint:         endpoint,
+		Username:         username,
+		Password:         password,
+		VersionSupported: "1",
+		client:           rest.NewClient(fshttp.NewClient(ctx)).SetRoot(endpoint),
+		loginPath:        "/accounts/login/", // trailing slash required, cf. django APPEND_SLASH
+		timeout:          5 * time.Second,
+		cache:            cache.New(),
 	}
 }
 
+// Version returns the API version transmitted in HTTP (proposed).
+func (api *Api) Version() string {
+	opts := rest.Opts{
+		Method: "GET",
+		Path:   "/",
+	}
+	resp, err := api.client.Call(context.TODO(), &opts)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	return resp.Header.Get(VaultVersionHeader)
+}
+
 func (api *Api) String() string {
-	return fmt.Sprintf("vault api (v%s)", api.Version)
+	return fmt.Sprintf("vault api (v%s)", api.VersionSupported)
 }
 
 // Login sets up a session, which should be valid for the client until logout

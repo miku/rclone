@@ -16,7 +16,10 @@ import (
 	"github.com/rclone/rclone/fs/hash"
 )
 
-var ErrNotImplemented = errors.New("not implemented")
+var (
+	ErrNotImplemented  = errors.New("not implemented")
+	ErrVersionMismatch = errors.New("api version mismatch")
+)
 
 func init() {
 	fs.Register(&fs.RegInfo{
@@ -53,6 +56,9 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 	api := api.New(opt.Endpoint, opt.Username, opt.Password)
 	if err := api.Login(); err != nil {
 		return nil, err
+	}
+	if api.Version() != "" && api.Version() != api.VersionSupported {
+		return nil, ErrVersionMismatch
 	}
 	f := &Fs{
 		name: name,
