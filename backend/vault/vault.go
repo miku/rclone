@@ -74,6 +74,8 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		BucketBased:             false,
 		PublicLink:              f.PublicLink,
 		About:                   f.About,
+		PutStream:               f.PutStream,
+		UserInfo:                f.UserInfo,
 	}
 	f.batcher, err = newBatcher(ctx, f)
 	return f, err
@@ -190,6 +192,10 @@ func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 	}, nil
 }
 
+func (f *Fs) PutStream(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
+	return f.Put(ctx, in, src, options...)
+}
+
 func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
 	fs.Debugf(f, "put %v [%v]", src.Remote(), src.Size())
 	var (
@@ -270,7 +276,14 @@ func (f *Fs) mkdir(ctx context.Context, dir string) error {
 }
 
 func (f *Fs) Rmdir(ctx context.Context, dir string) error {
-	return ErrNotImplemented
+	t, err := f.api.ResolvePath(f.absPath(dir))
+	if err != nil {
+		return err
+	}
+	if t.NodeType != "FOLDER" {
+		return fmt.Errorf("can only drop folders, not %v", t.NodeType)
+	}
+	return f.api.Remove(t)
 }
 
 // Fs extra
@@ -489,6 +502,8 @@ var (
 	_ fs.Abouter      = (*Fs)(nil)
 	_ fs.Fs           = (*Fs)(nil)
 	_ fs.PublicLinker = (*Fs)(nil)
+	_ fs.PutStreamer  = (*Fs)(nil)
+	_ fs.UserInfoer   = (*Fs)(nil)
 	_ fs.MimeTyper    = (*Object)(nil)
 	_ fs.Object       = (*Object)(nil)
 	_ fs.Directory    = (*Dir)(nil)
