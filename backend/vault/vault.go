@@ -397,11 +397,9 @@ func (o *Object) Open(ctx context.Context, options ...fs.OpenOption) (io.ReadClo
 func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) error {
 	fs.Debugf(o, "noop: update")
 	return nil
-
 }
 func (o *Object) Remove(ctx context.Context) error {
-	fs.Debugf(o, "noop: remove")
-	return nil
+	return o.fs.api.Remove(o.treeNode)
 }
 
 // Object extra

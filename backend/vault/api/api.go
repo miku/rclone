@@ -264,6 +264,25 @@ func (api *Api) CreateFolder(parent *TreeNode, name string) error {
 	return nil
 }
 
+// Remove a treenode.
+func (api *Api) Remove(t *TreeNode) error {
+	opts := rest.Opts{
+		Method: "DELETE",
+		Path:   fmt.Sprintf("/treenodes/%d/", t.Id),
+		ExtraHeaders: map[string]string{
+			"X-CSRFTOKEN": api.csrfToken(),
+			"Referer":     api.refererURL("treenodes"),
+		},
+	}
+	fs.Debugf(api, "removing %v", t.Id)
+	resp, err := api.client.Call(context.TODO(), &opts)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // List returns the immediate children of a treenode.
 func (api *Api) List(t *TreeNode) ([]*TreeNode, error) {
 	if t == nil {
