@@ -280,7 +280,7 @@ func (f *Fs) PublicLink(ctx context.Context, remote string, expire fs.Duration, 
 		// TODO: may want to url encode
 		return v, nil
 	default:
-		return "", fmt.Errorf("link not available")
+		return "", fmt.Errorf("link not available for treenode %v", t.Id)
 	}
 }
 
