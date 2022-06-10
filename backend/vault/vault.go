@@ -373,7 +373,7 @@ func (o *Object) Hash(ctx context.Context, ty hash.Type) (string, error) {
 			return v, nil
 		}
 	}
-	return "", hash.ErrUnsupported
+	return "", nil
 }
 func (o *Object) Storable() bool { return true }
 
