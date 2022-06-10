@@ -37,6 +37,7 @@ func newBatcher(ctx context.Context, f *Fs) (*batcher, error) {
 	t, err := f.api.ResolvePath(f.root)
 	if err != nil {
 		if err == fs.ErrorObjectNotFound {
+			// TODO: We only want this, if we actually have a Put request (not any, as currently).
 			if err = f.mkdir(ctx, f.root); err != nil {
 				return nil, err
 			}
