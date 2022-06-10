@@ -103,7 +103,7 @@ func (api *Api) Login() (err error) {
 	}})
 	client := http.Client{
 		Jar:     jar,
-		Timeout: 5 * time.Second,
+		Timeout: api.timeout,
 	}
 	// We could use PostForm, but we need to set extra headers.
 	data := url.Values{}
