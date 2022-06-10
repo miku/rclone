@@ -144,6 +144,16 @@ type CollectionStats struct {
 	} `json:"latestReport"`
 }
 
+// Plan associated with an account.
+type Plan struct {
+	DefaultFixityFrequency string   `json:"default_fixity_frequency"`
+	DefaultGeolocations    []string `json:"default_geolocations"`
+	DefaultReplication     int64    `json:"default_replication"`
+	Name                   string   `json:"name"`
+	PricePerTerabyte       string   `json:"price_per_terabyte"`
+	Url                    string   `json:"url"`
+}
+
 // Helper methods
 // --------------
 
@@ -240,6 +250,21 @@ func (o *Organization) TreeNodeIdentifier() string {
 	default:
 		re := regexp.MustCompile(`^http.*/api/treenodes/([0-9]{1,})/?$`)
 		matches := re.FindStringSubmatch(o.TreeNode)
+		if len(matches) != 2 {
+			return ""
+		}
+		return matches[1]
+	}
+}
+
+func (o *Organization) PlanIdentifier() string {
+	switch {
+	case !strings.HasPrefix(o.TreeNode, "http"):
+		// TODO: Check if this is a number.
+		return o.Plan
+	default:
+		re := regexp.MustCompile(`^http.*/api/plans/([0-9]{1,})/?$`)
+		matches := re.FindStringSubmatch(o.Plan)
 		if len(matches) != 2 {
 			return ""
 		}
@@ -408,6 +433,29 @@ func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
 		return nil, fmt.Errorf("api: treenodes got %v", resp.StatusCode)
 	}
 	api.cache.SetGroup(id, "treenode", &doc)
+	return &doc, nil
+}
+
+func (api *Api) GetPlan(id string) (*Plan, error) {
+	if v := api.cache.GetGroup(id, "plan"); v != nil {
+		return v.(*Plan), nil
+	}
+	var (
+		opts = rest.Opts{
+			Method: "GET",
+			Path:   fmt.Sprintf("/plans/%v/", id),
+		}
+		doc Plan
+	)
+	resp, err := api.client.CallJSON(context.TODO(), &opts, nil, &doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api: plan got %v", resp.StatusCode)
+	}
+	api.cache.SetGroup(id, "plan", &doc)
 	return &doc, nil
 }
 

@@ -311,6 +311,32 @@ func (f *Fs) About(ctx context.Context) (*fs.Usage, error) {
 	}, nil
 }
 
+func (f *Fs) UserInfo(ctx context.Context) (map[string]string, error) {
+	// TODO: Return info about user.
+	u, err := f.api.User()
+	if err != nil {
+		return nil, err
+	}
+	organization, err := f.api.Organization()
+	if err != nil {
+		return nil, err
+	}
+	plan, err := f.api.Plan()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"Username":               u.Username,
+		"FirstName":              u.FirstName,
+		"LastName":               u.LastName,
+		"Organization":           organization.Name,
+		"Plan":                   plan.Name,
+		"DefaultFixityFrequency": plan.DefaultFixityFrequency,
+		"QuotaBytes":             fmt.Sprintf("%d", organization.QuotaBytes),
+		"LastLogin":              u.LastLogin,
+	}, nil
+}
+
 // Fs helpers
 // ----------
 

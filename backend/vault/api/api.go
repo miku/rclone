@@ -425,3 +425,12 @@ func (api *Api) Organization() (*Organization, error) {
 	}
 	return api.GetOrganization(u.OrganizationIdentifier())
 }
+
+// Plan for the current user.
+func (api *Api) Plan() (*Plan, error) {
+	organization, err := api.Organization()
+	if err != nil {
+		return nil, err
+	}
+	return api.GetPlan(organization.PlanIdentifier())
+}
