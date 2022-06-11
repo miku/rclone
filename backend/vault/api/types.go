@@ -192,7 +192,7 @@ func (t *TreeNode) Content(options ...fs.OpenOption) (io.ReadCloser, error) {
 		}
 		return resp.Body, nil
 	case nil:
-		r := &extra.DummyReader{N: t.Size()}
+		r := &extra.DummyReader{N: t.Size(), C: 0x7c}
 		return io.NopCloser(r), nil
 	default:
 		return nil, fmt.Errorf("invalid content url type: %T", v)

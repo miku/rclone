@@ -2,6 +2,7 @@ package extra
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -12,18 +13,35 @@ import (
 // DummyReader reads a fixed number of dummy bytes, e.g. dots; placeholder.
 type DummyReader struct {
 	N int64 // max
+	C byte  // char to use
 	i int64 // current
 }
 
 // Read reports reads, but does nothing.
 func (r *DummyReader) Read(p []byte) (n int, err error) {
+	if r.N == 0 {
+		return 0, io.EOF
+	}
+	if r.N < 0 {
+		return 0, fmt.Errorf("N must be positive")
+	}
 	for i := range p {
-		p[i] = 0x2e // "."
+		p[i] = r.C
 	}
-	r.i += int64(len(p))
-	if r.i >= r.N {
-		return len(p), io.EOF
+	l := int64(len(p))
+	if r.i+l > r.N {
+		// https://i.imgur.com/2Zm3WHd.png
+		s := fmt.Sprintf("%d", r.N)
+		ls := int64(len(s))
+		if r.N-r.i-2-ls > 0 {
+			for i, c := range s {
+				p[r.N-r.i-2-(ls-int64(i))] = byte(c)
+			}
+		}
+		p[r.N-r.i-1] = 0x0a
+		return int(r.N - r.i), io.EOF
 	}
+	r.i += l
 	return len(p), nil
 }
 
