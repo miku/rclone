@@ -238,13 +238,13 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 }
 
 func (f *Fs) Mkdir(ctx context.Context, dir string) error {
-	fs.Debugf(f, "mkdir: %v", dir)
 	return f.mkdir(ctx, f.absPath(dir))
 }
 
 // mkdir creates a directory, ignores the filesystem root and expects dir to be
 // the absolute path. Will create directories recursively.
 func (f *Fs) mkdir(ctx context.Context, dir string) error {
+	fs.Debugf(f, "mkdir: %v", dir)
 	var t, _ = f.api.ResolvePath(dir)
 	switch {
 	case t != nil && t.NodeType == "FOLDER":
