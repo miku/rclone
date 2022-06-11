@@ -69,9 +69,8 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 	}
 	f.features = &fs.Features{
 		CaseInsensitive:         true,
-		IsLocal:                 false,
 		CanHaveEmptyDirectories: true,
-		BucketBased:             false,
+		ReadMimeType:            true,
 		PublicLink:              f.PublicLink,
 		About:                   f.About,
 		PutStream:               f.PutStream,
