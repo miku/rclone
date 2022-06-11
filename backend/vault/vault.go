@@ -127,6 +127,9 @@ func (f *Fs) List(ctx context.Context, dir string) (fs.DirEntries, error) {
 	)
 	t, err := f.api.ResolvePath(absPath)
 	if err != nil {
+		if dir == "" && err == fs.ErrorObjectNotFound {
+			return nil, fs.ErrorDirNotFound
+		}
 		return nil, err
 	}
 	switch {
