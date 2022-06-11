@@ -394,11 +394,19 @@ func (api *Api) csrfToken() string {
 
 // root returns the organization not for the api user.
 func (api *Api) root() (*TreeNode, error) {
+	if v := api.cache.GetGroup("root", "default"); v != nil {
+		return v.(*TreeNode), nil
+	}
 	organization, err := api.Organization()
 	if err != nil {
 		return nil, err
 	}
-	return api.GetTreeNode(organization.TreeNodeIdentifier())
+	t, err := api.GetTreeNode(organization.TreeNodeIdentifier())
+	if err != nil {
+		return nil, err
+	}
+	api.cache.SetGroup("root", "default", t)
+	return t, nil
 }
 
 // User returns the current user.
