@@ -76,6 +76,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		About:                   f.About,
 		PutStream:               f.PutStream,
 		UserInfo:                f.UserInfo,
+		Disconnect:              f.Disconnect,
 	}
 	return f, nil
 }
@@ -361,6 +362,12 @@ func (f *Fs) UserInfo(ctx context.Context) (map[string]string, error) {
 		"QuotaBytes":             fmt.Sprintf("%d", organization.QuotaBytes),
 		"LastLogin":              u.LastLogin,
 	}, nil
+}
+
+// Disconnect logs out the current user.
+func (f *Fs) Disconnect(ctx context.Context) error {
+	f.api.Logout()
+	return nil
 }
 
 // Fs helpers
