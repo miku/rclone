@@ -7,6 +7,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rclone/rclone/backend/vault/api"
@@ -77,8 +78,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		PutStream:               f.PutStream,
 		UserInfo:                f.UserInfo,
 	}
-	f.batcher, err = newBatcher(ctx, f)
-	return f, err
+	return f, nil
 }
 
 type Options struct {
@@ -93,7 +93,8 @@ type Fs struct {
 	opt      Options
 	api      *api.Api
 	features *fs.Features
-	batcher  *batcher // batching for deposits, for put
+	mu       sync.Mutex // protect batcher
+	batcher  *batcher   // batching for deposits, for put
 }
 
 // Fs Info
@@ -205,6 +206,15 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 	if filename, err = TempfileFromReader(in); err != nil {
 		return nil, err
 	}
+	f.mu.Lock()
+	if f.batcher == nil {
+		fs.Debugf(f, "initializing batcher")
+		f.batcher, err = newBatcher(ctx, f)
+		if err != nil {
+			return nil, err
+		}
+	}
+	f.mu.Unlock()
 	// TODO: with retries, we may add the same object twice or more; check that
 	// each batch contains unique elements
 	f.batcher.Add(&batchItem{
