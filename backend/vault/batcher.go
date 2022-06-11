@@ -52,8 +52,8 @@ func newBatcher(ctx context.Context, f *Fs) (*batcher, error) {
 		fs:     f,
 		parent: t,
 	}
-	b.atexit = atexit.Register(func() { b.Shutdown(ctx) })
-	// When interrupted, we may have items in the batch, clean these up bevor
+	b.atexit = atexit.Register(b.Shutdown)
+	// When interrupted, we may have items in the batch, clean these up before
 	// the shutdown handler runs.
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -138,6 +138,9 @@ func (b *batcher) Shutdown(ctx context.Context) {
 			return
 		}
 		var (
+			// We do not want to be cancelled here; or if, we want to set our
+			// own timeout for deposit uploads.
+			ctx             = context.Background()
 			totalSize int64 = 0
 			files     []*api.File
 		)
@@ -161,7 +164,7 @@ func (b *batcher) Shutdown(ctx context.Context) {
 		case b.parent.NodeType == "FOLDER":
 			rdr.ParentNodeId = b.parent.Id
 		}
-		depositId, err := b.fs.api.RegisterDeposit("", rdr) // TODO: root is ignored anyway
+		depositId, err := b.fs.api.RegisterDeposit(ctx, rdr)
 		if err != nil {
 			fs.LogLevelPrintf(fs.LogLevelError, b, "deposit failed: %v", err)
 			return
@@ -191,8 +194,7 @@ func (b *batcher) Shutdown(ctx context.Context) {
 					"upload_token":         []string{"my_token"},
 				},
 			}
-			// log.Printf("vault[Shutdown] preparing request: %v", opts)
-			resp, err := b.fs.api.Call(context.TODO(), &opts)
+			resp, err := b.fs.api.Call(ctx, &opts)
 			if err != nil {
 				fs.LogLevelPrintf(fs.LogLevelError, b, "call failed: %v", err)
 				return
@@ -229,7 +231,7 @@ func (b *batcher) Shutdown(ctx context.Context) {
 				MultipartFileName:    path.Base(item.src.Remote()),
 				Body:                 itemf,
 			}
-			resp, err = b.fs.api.CallJSON(context.TODO(), &opts, nil, nil)
+			resp, err = b.fs.api.CallJSON(ctx, &opts, nil, nil)
 			if err != nil {
 				fs.LogLevelPrintf(fs.LogLevelError, b, "upload failed: %v", err)
 				return

@@ -333,13 +333,13 @@ func (api *Api) ResolvePath(p string) (*TreeNode, error) {
 	return t, nil
 }
 
-func (api *Api) RegisterDeposit(root string, rdr *RegisterDepositRequest) (id int64, err error) {
+func (api *Api) RegisterDeposit(ctx context.Context, rdr *RegisterDepositRequest) (id int64, err error) {
 	opts := rest.Opts{
 		Method: "POST",
 		Path:   "/register_deposit",
 	}
 	var depositResp RegisterDepositResponse
-	resp, err := api.client.CallJSON(context.Background(), &opts, rdr, &depositResp)
+	resp, err := api.client.CallJSON(ctx, &opts, rdr, &depositResp)
 	if err != nil {
 		// TODO: we need warning deposit here to check whether files already
 		// exist; do some kind of "--force" by default
