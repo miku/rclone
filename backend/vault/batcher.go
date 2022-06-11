@@ -17,16 +17,18 @@ import (
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/lib/atexit"
 	"github.com/rclone/rclone/lib/rest"
+	"github.com/schollz/progressbar/v3"
 )
 
 // batcher is used to group mass upload for a deposit.
 type batcher struct {
-	fs     *Fs             // fs.root will be the parent collection or folder
-	atexit atexit.FnHandle // callback
-	parent *api.TreeNode   // resolved and possibly new parent treenode
-	once   sync.Once       // only batch wrap up once
-	mu     sync.Mutex      // protect items
-	items  []*batchItem    // file metadata and content for deposit items
+	fs           *Fs             // fs.root will be the parent collection or folder
+	atexit       atexit.FnHandle // callback
+	parent       *api.TreeNode   // resolved and possibly new parent treenode
+	once         sync.Once       // only batch wrap up once
+	mu           sync.Mutex      // protect items
+	items        []*batchItem    // file metadata and content for deposit items
+	showProgress bool            // show progress bar
 }
 
 // newBatcher creates a new batcher, which will execute most code at rclone
@@ -168,6 +170,9 @@ func (b *batcher) Shutdown(ctx context.Context) {
 			return
 		}
 		fs.Debugf(b, "created deposit %v", depositId)
+		if b.showProgress {
+			bar = progressbar.DefaultBytes(totalSize, "<5>NOTICE: depositing")
+		}
 		for i, item := range b.items {
 			// Upload file with a single chunk.
 			// First issue a GET, if that is 204 then a POST
@@ -176,6 +181,9 @@ func (b *batcher) Shutdown(ctx context.Context) {
 				return
 			}
 			size := fi.Size()
+			if b.showProgress {
+				bar.Add(int(size))
+			}
 			opts := rest.Opts{
 				Method: "GET",
 				Path:   "/flow_chunk",

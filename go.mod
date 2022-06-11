@@ -62,7 +62,7 @@ require (
 	golang.org/x/net v0.0.0-20220607020251-c690dde0001d
 	golang.org/x/oauth2 v0.0.0-20220608161450-d0670ef3b1eb
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
-	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a
+	golang.org/x/sys v0.0.0-20220610221304-9f5ed59c137d
 	golang.org/x/text v0.3.7
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306
 	google.golang.org/api v0.83.0
@@ -77,6 +77,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/jlaffaye/ftp v0.0.0-20220524001917-dfa1e758f3af
+	github.com/schollz/progressbar/v3 v3.8.6 // indirect
 	golang.org/x/mobile v0.0.0-20220518205345-8578da9835fd
 	golang.org/x/term v0.0.0-20220526004731-065cf7ba2467
 )
