@@ -179,7 +179,7 @@ func (d *DepositStatus) Completed() bool {
 }
 
 // Content either returns the real content or some dummy bytes of the size of
-// the object.
+// the object. TODO: handle options
 func (t *TreeNode) Content(options ...fs.OpenOption) (io.ReadCloser, error) {
 	switch v := t.ContentURL.(type) {
 	case string:
