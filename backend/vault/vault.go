@@ -71,7 +71,6 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		CaseInsensitive:         true,
 		IsLocal:                 false,
 		CanHaveEmptyDirectories: true,
-		SlowHash:                true,
 		BucketBased:             false,
 		PublicLink:              f.PublicLink,
 		About:                   f.About,
