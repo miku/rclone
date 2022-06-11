@@ -196,10 +196,12 @@ func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 	}, nil
 }
 
+// Put uploads a new object. Since we need to temporarily store files to upload, we can as well stream.
 func (f *Fs) PutStream(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
 	return f.Put(ctx, in, src, options...)
 }
 
+// Put uploads a new object.
 func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
 	fs.Debugf(f, "put %v [%v]", src.Remote(), src.Size())
 	var (
@@ -338,7 +340,6 @@ func (f *Fs) About(ctx context.Context) (*fs.Usage, error) {
 }
 
 func (f *Fs) UserInfo(ctx context.Context) (map[string]string, error) {
-	// TODO: Return info about user.
 	u, err := f.api.User()
 	if err != nil {
 		return nil, err
