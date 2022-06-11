@@ -33,6 +33,9 @@ var (
 	ErrAmbiguousQuery = errors.New("ambiguous query")
 )
 
+// Api wraps the vault API. Django REST Framework has some support for export a
+// swagger definition, which we may switch over at some point (it was not
+// enabled). Login required.
 type Api struct {
 	Endpoint         string
 	Username         string
@@ -45,6 +48,7 @@ type Api struct {
 	cache     *cache.Cache
 }
 
+// New sets up a new api, no further checks at this time.
 func New(endpoint, username, password string) *Api {
 	ctx := context.Background()
 	return &Api{
@@ -162,6 +166,8 @@ func (api *Api) Call(ctx context.Context, opts *rest.Opts) (*http.Response, erro
 	return api.client.Call(ctx, opts)
 }
 
+// CallJSON exposes the current client to the outside, so the caller can reuse
+// the autheticated client.
 func (api *Api) CallJSON(ctx context.Context, opts *rest.Opts, req, resp interface{}) (*http.Response, error) {
 	return api.client.CallJSON(ctx, opts, req, resp)
 }

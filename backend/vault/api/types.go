@@ -213,6 +213,7 @@ func (t *TreeNode) Size() int64 {
 	}
 }
 
+// MimeType returns the mimetype for the treenode or the empty string.
 func (t *TreeNode) MimeType() string {
 	switch v := t.FileType.(type) {
 	case string:
@@ -240,6 +241,7 @@ func (u *User) OrganizationIdentifier() string {
 	}
 }
 
+// TreeNodeIdentifier parses out the treenode identifier for an organization.
 func (o *Organization) TreeNodeIdentifier() string {
 	switch {
 	case o.TreeNode == "":
@@ -257,6 +259,7 @@ func (o *Organization) TreeNodeIdentifier() string {
 	}
 }
 
+// PlanIdentifier parses out the plan identifier for an organization.
 func (o *Organization) PlanIdentifier() string {
 	switch {
 	case !strings.HasPrefix(o.TreeNode, "http"):
@@ -272,6 +275,7 @@ func (o *Organization) PlanIdentifier() string {
 	}
 }
 
+// Identifier returns the collection identifier.
 func (c *Collection) Identifier() int64 {
 	switch {
 	case c.URL == "":
@@ -328,6 +332,7 @@ type TreeNodeList struct {
 // Get methods
 // -----------
 
+// GetCollectionStats returns a summary.
 func (api *Api) GetCollectionStats() (*CollectionStats, error) {
 	var (
 		opts = rest.Opts{
@@ -344,6 +349,7 @@ func (api *Api) GetCollectionStats() (*CollectionStats, error) {
 	return &doc, nil
 }
 
+// GetUser returns the user for a given id.
 func (api *Api) GetUser(id string) (*User, error) {
 	if v := api.cache.GetGroup(id, "user"); v != nil {
 		return v.(*User), nil
@@ -367,6 +373,7 @@ func (api *Api) GetUser(id string) (*User, error) {
 	return &doc, nil
 }
 
+// GetOrganization returns the organization for a given id.
 func (api *Api) GetOrganization(id string) (*Organization, error) {
 	if v := api.cache.GetGroup(id, "organization"); v != nil {
 		return v.(*Organization), nil
@@ -390,6 +397,7 @@ func (api *Api) GetOrganization(id string) (*Organization, error) {
 	return &doc, nil
 }
 
+// GetCollection returns the collection for a given id.
 func (api *Api) GetCollection(id string) (*Collection, error) {
 	if v := api.cache.GetGroup(id, "collection"); v != nil {
 		return v.(*Collection), nil
@@ -413,6 +421,7 @@ func (api *Api) GetCollection(id string) (*Collection, error) {
 	return &doc, nil
 }
 
+// GetTreeNode returns the treenode for a given id.
 func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
 	if v := api.cache.GetGroup(id, "treenode"); v != nil {
 		return v.(*TreeNode), nil
@@ -436,6 +445,7 @@ func (api *Api) GetTreeNode(id string) (*TreeNode, error) {
 	return &doc, nil
 }
 
+// GetPlan returns the plan for a given id.
 func (api *Api) GetPlan(id string) (*Plan, error) {
 	if v := api.cache.GetGroup(id, "plan"); v != nil {
 		return v.(*Plan), nil

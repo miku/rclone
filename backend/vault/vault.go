@@ -511,6 +511,7 @@ func (dir *Dir) Size() int64 { return 0 }
 // Dir Ops
 // -------
 
+// Items returns the number of entries in this directory.
 func (dir *Dir) Items() int64 {
 	children, err := dir.fs.api.List(dir.treeNode)
 	if err != nil {
@@ -519,6 +520,8 @@ func (dir *Dir) Items() int64 {
 	return int64(len(children))
 }
 
+// ID returns the treenode path. I believe most importantly, this needs to be
+// unique (which path is).
 func (dir *Dir) ID() string { return dir.treeNode.Path }
 
 // Check if interfaces are satisfied
