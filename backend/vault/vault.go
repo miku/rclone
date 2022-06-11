@@ -47,7 +47,7 @@ func init() {
 	})
 }
 
-// NewFS sets up a new filesystem. TODO: check for API compat here.
+// NewFS sets up a new filesystem.
 func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, error) {
 	var opt Options
 	err := configstruct.Set(m, &opt)
@@ -80,12 +80,16 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 	return f, nil
 }
 
+// Options for vault.
 type Options struct {
 	Username string `config:"username"`
 	Password string `config:"password"`
 	Endpoint string `config:"endpoint"`
 }
 
+// Fs is the main vault filesystem. Most operations are accessed through the
+// api. A batch helper is required to model the deposit-style upload of a
+// potentially large set of files.
 type Fs struct {
 	name     string
 	root     string
@@ -195,7 +199,7 @@ func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 	}, nil
 }
 
-// Put uploads a new object. Since we need to temporarily store files to upload, we can as well stream.
+// PutStream uploads a new object. Since we need to temporarily store files to upload, we can as well stream.
 func (f *Fs) PutStream(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
 	return f.Put(ctx, in, src, options...)
 }
@@ -236,6 +240,7 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 	}, nil
 }
 
+// Mkdir creates a directory, if it does not exist.
 func (f *Fs) Mkdir(ctx context.Context, dir string) error {
 	return f.mkdir(ctx, f.absPath(dir))
 }
@@ -289,6 +294,7 @@ func (f *Fs) mkdir(ctx context.Context, dir string) error {
 	return nil
 }
 
+// Rmdir deletes a folder.
 func (f *Fs) Rmdir(ctx context.Context, dir string) error {
 	t, err := f.api.ResolvePath(f.absPath(dir))
 	if err != nil {
@@ -303,6 +309,7 @@ func (f *Fs) Rmdir(ctx context.Context, dir string) error {
 // Fs extra
 // --------
 
+// PublicLink returns the download link, if it exists.
 func (f *Fs) PublicLink(ctx context.Context, remote string, expire fs.Duration, unlink bool) (link string, err error) {
 	t, err := f.api.ResolvePath(f.absPath(remote))
 	if err != nil {
@@ -327,9 +334,11 @@ func (f *Fs) About(ctx context.Context) (*fs.Usage, error) {
 	if err != nil {
 		return nil, err
 	}
-	numFiles := stats.NumFiles()
-	used := stats.TotalSize()
-	free := organization.QuotaBytes - used
+	var (
+		numFiles = stats.NumFiles()
+		used     = stats.TotalSize()
+		free     = organization.QuotaBytes - used
+	)
 	return &fs.Usage{
 		Total:   &organization.QuotaBytes,
 		Used:    &used,
@@ -338,6 +347,7 @@ func (f *Fs) About(ctx context.Context) (*fs.Usage, error) {
 	}, nil
 }
 
+// UserInfo returns some information about the user, organization and plan.
 func (f *Fs) UserInfo(ctx context.Context) (map[string]string, error) {
 	u, err := f.api.User()
 	if err != nil {
@@ -510,9 +520,6 @@ func (dir *Dir) Items() int64 {
 }
 
 func (dir *Dir) ID() string { return dir.treeNode.Path }
-
-// Helpers
-// -------
 
 // Check if interfaces are satisfied
 // ---------------------------------
