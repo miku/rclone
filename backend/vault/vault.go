@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rclone/rclone/backend/vault/api"
+	"github.com/rclone/rclone/backend/vault/extra"
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config/configmap"
 	"github.com/rclone/rclone/fs/config/configstruct"
@@ -211,7 +212,7 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 		filename string
 		err      error
 	)
-	if filename, err = TempfileFromReader(in); err != nil {
+	if filename, err = extra.TempfileFromReader(in); err != nil {
 		return nil, err
 	}
 	f.mu.Lock()

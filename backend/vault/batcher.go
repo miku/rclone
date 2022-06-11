@@ -3,8 +3,6 @@ package vault
 import (
 	"context"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -248,19 +246,4 @@ func (b *batcher) Shutdown(ctx context.Context) {
 		}
 		fs.Logf(b, "upload done, deposited %d item(s)", len(b.items))
 	})
-}
-
-// TempfileFromReader spools a reader into temporary file and returns its name.
-func TempfileFromReader(r io.Reader) (string, error) {
-	tf, err := ioutil.TempFile("", "rclone-vault-transit-*")
-	if err != nil {
-		return "", err
-	}
-	if _, err := io.Copy(tf, r); err != nil {
-		return "", err
-	}
-	if err := tf.Close(); err != nil {
-		return "", err
-	}
-	return tf.Name(), nil
 }

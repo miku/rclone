@@ -1,13 +1,9 @@
 package extra
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"mime/multipart"
-	"net/http"
-	"os"
 )
 
 // DummyReader reads a fixed number of dummy bytes, e.g. dots; placeholder.
