@@ -67,6 +67,7 @@ func newBatcher(ctx context.Context, f *Fs) (*batcher, error) {
 			b.mu.Unlock()
 		}
 	}()
+	fs.Debugf(b, "initialized batcher")
 	return b, nil
 }
 
@@ -129,12 +130,15 @@ func (b *batcher) Add(item *batchItem) {
 }
 
 // Shutdown creates a new deposit request for all batch items and uploads them.
-func (b *batcher) Shutdown(ctx context.Context) {
+// This is the one of the last things rclone run before exiting. There is no
+// error to return.
+func (b *batcher) Shutdown() {
 	fs.Debugf(b, "shutdown started")
 	b.once.Do(func() {
 		atexit.Unregister(b.atexit)
+		signal.Reset(os.Interrupt)
 		if len(b.items) == 0 {
-			fs.Debugf(b, "nothing to upload")
+			fs.Debugf(b, "nothing to deposit")
 			return
 		}
 		var (
@@ -143,8 +147,9 @@ func (b *batcher) Shutdown(ctx context.Context) {
 			ctx             = context.Background()
 			totalSize int64 = 0
 			files     []*api.File
+			bar       *progressbar.ProgressBar
 		)
-		fs.Debugf(b, "preparing %d files ...", len(b.items))
+		fs.Debugf(b, "preparing %d files for deposit", len(b.items))
 		for _, item := range b.items {
 			totalSize += item.src.Size()
 			files = append(files, item.ToFile(ctx))
@@ -174,8 +179,8 @@ func (b *batcher) Shutdown(ctx context.Context) {
 			bar = progressbar.DefaultBytes(totalSize, "<5>NOTICE: depositing")
 		}
 		for i, item := range b.items {
-			// Upload file with a single chunk.
-			// First issue a GET, if that is 204 then a POST
+			// Upload file with a single chunk. First issue a GET, if that is a
+			// 204 then a POST.
 			fi, err := os.Stat(item.filename)
 			if err != nil {
 				return
@@ -184,21 +189,22 @@ func (b *batcher) Shutdown(ctx context.Context) {
 			if b.showProgress {
 				bar.Add(int(size))
 			}
+			params := url.Values{
+				"depositId":            []string{strconv.Itoa(int(depositId))},
+				"flowChunkNumber":      []string{"1"},
+				"flowChunkSize":        []string{strconv.Itoa(int(size))},
+				"flowCurrentChunkSize": []string{strconv.Itoa(int(size))},
+				"flowFilename":         []string{files[i].Name},
+				"flowIdentifier":       []string{files[i].FlowIdentifier},
+				"flowRelativePath":     []string{files[i].RelativePath},
+				"flowTotalChunks":      []string{"1"},
+				"flowTotalSize":        []string{strconv.Itoa(int(size))},
+				"upload_token":         []string{"my_token"},
+			}
 			opts := rest.Opts{
-				Method: "GET",
-				Path:   "/flow_chunk",
-				Parameters: url.Values{
-					"depositId":            []string{strconv.Itoa(int(depositId))},
-					"flowChunkNumber":      []string{"1"},
-					"flowChunkSize":        []string{strconv.Itoa(int(size))},
-					"flowCurrentChunkSize": []string{strconv.Itoa(int(size))},
-					"flowFilename":         []string{files[i].Name},
-					"flowIdentifier":       []string{files[i].FlowIdentifier},
-					"flowRelativePath":     []string{files[i].RelativePath},
-					"flowTotalChunks":      []string{"1"},
-					"flowTotalSize":        []string{strconv.Itoa(int(size))},
-					"upload_token":         []string{"my_token"},
-				},
+				Method:     "GET",
+				Path:       "/flow_chunk",
+				Parameters: params,
 			}
 			resp, err := b.fs.api.Call(ctx, &opts)
 			if err != nil {
@@ -210,29 +216,16 @@ func (b *batcher) Shutdown(ctx context.Context) {
 				fs.LogLevelPrintf(fs.LogLevelError, b, "expected HTTP 204, got %v", resp.StatusCode)
 				return
 			}
-			n := size
 			itemf, err := os.Open(item.filename)
 			if err != nil {
 				fs.LogLevelPrintf(fs.LogLevelError, b, "failed to open temporary file: %v", err)
 				return
 			}
 			opts = rest.Opts{
-				Method: "POST",
-				// RootURL: "http://localhost:9090",
-				Path: "/flow_chunk",
-				MultipartParams: url.Values{
-					"depositId":            []string{strconv.Itoa(int(depositId))},
-					"flowChunkNumber":      []string{"1"},
-					"flowChunkSize":        []string{strconv.Itoa(int(size))},
-					"flowCurrentChunkSize": []string{strconv.Itoa(int(size))},
-					"flowFilename":         []string{files[i].Name},
-					"flowIdentifier":       []string{files[i].FlowIdentifier},
-					"flowRelativePath":     []string{files[i].RelativePath},
-					"flowTotalChunks":      []string{"1"},
-					"flowTotalSize":        []string{strconv.Itoa(int(size))},
-					"upload_token":         []string{"my_token"},
-				},
-				ContentLength:        &n,
+				Method:               "POST",
+				Path:                 "/flow_chunk",
+				MultipartParams:      params,
+				ContentLength:        &size,
 				MultipartContentName: "file",
 				MultipartFileName:    path.Base(item.src.Remote()),
 				Body:                 itemf,

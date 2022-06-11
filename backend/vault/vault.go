@@ -106,7 +106,7 @@ type Fs struct {
 
 func (f *Fs) Name() string             { return f.name }
 func (f *Fs) Root() string             { return f.root }
-func (f *Fs) String() string           { return fmt.Sprintf("%s", f.name) }
+func (f *Fs) String() string           { return f.name }
 func (f *Fs) Precision() time.Duration { return 1 * time.Second }
 func (f *Fs) Hashes() hash.Set         { return hash.Set(hash.MD5 | hash.SHA1 | hash.SHA256) }
 func (f *Fs) Features() *fs.Features   { return f.features }
@@ -202,6 +202,7 @@ func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 
 // PutStream uploads a new object. Since we need to temporarily store files to upload, we can as well stream.
 func (f *Fs) PutStream(ctx context.Context, in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
+	fs.Debugf(f, "put stream %v [%v]", src.Remote(), src.Size())
 	return f.Put(ctx, in, src, options...)
 }
 
@@ -212,16 +213,16 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 		filename string
 		err      error
 	)
-	if filename, err = extra.TempfileFromReader(in); err != nil {
+	if filename, err = extra.TempFileFromReader(in); err != nil {
 		return nil, err
 	}
 	f.mu.Lock()
 	if f.batcher == nil {
-		fs.Debugf(f, "initializing batcher")
 		f.batcher, err = newBatcher(ctx, f)
 		if err != nil {
 			return nil, err
 		}
+		f.batcher.showProgress = true
 	}
 	f.mu.Unlock()
 	// TODO: with retries, we may add the same object twice or more; check that

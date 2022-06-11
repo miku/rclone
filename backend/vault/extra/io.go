@@ -41,40 +41,17 @@ func (r *DummyReader) Read(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// newUploadRequest sets up a upload request; via: "Creates a new file upload
-// http request with optional extra params";
-// https://gist.github.com/mattetti/5914158/f4d1393d83ebedc682a3c8e7bdc6b49670083b84.
-func newUploadRequest(uri string, params map[string]string, paramName, path string) (*http.Request, error) {
-	file, err := os.Open(path)
+// TempFileFromReader spools a reader into temporary file and returns its name.
+func TempFileFromReader(r io.Reader) (string, error) {
+	tf, err := ioutil.TempFile("", "rclone-vault-transit-*")
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	fileContents, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
+	if _, err := io.Copy(tf, r); err != nil {
+		return "", err
 	}
-	fi, err := file.Stat()
-	if err != nil {
-		return nil, err
+	if err := tf.Close(); err != nil {
+		return "", err
 	}
-	file.Close()
-	var (
-		body   = new(bytes.Buffer)
-		writer = multipart.NewWriter(body)
-	)
-	part, err := writer.CreateFormFile(paramName, fi.Name())
-	if err != nil {
-		return nil, err
-	}
-	if _, err := part.Write(fileContents); err != nil {
-		return nil, err
-	}
-	for key, val := range params {
-		_ = writer.WriteField(key, val)
-	}
-	err = writer.Close()
-	if err != nil {
-		return nil, err
-	}
-	return http.NewRequest("POST", uri, body)
+	return tf.Name(), nil
 }
