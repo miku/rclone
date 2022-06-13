@@ -270,6 +270,54 @@ func (api *Api) CreateFolder(parent *TreeNode, name string) error {
 	return nil
 }
 
+// Rename updates name of a treenode. TODO: ...
+func (api *Api) Rename(t *TreeNode, name string) error {
+	opts := rest.Opts{
+		Method: "PATCH",
+		Path:   fmt.Sprintf("/treenodes/%d/", t.Id),
+		ExtraHeaders: map[string]string{
+			"X-CSRFTOKEN": api.csrfToken(),
+			"Referer":     api.refererURL("treenodes"),
+		},
+	}
+	payload := struct {
+		Name string `json:"name"`
+	}{
+		Name: name,
+	}
+	fs.Debugf(api, "renaming %v", t.Id)
+	resp, err := api.client.CallJSON(context.TODO(), &opts, payload, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// Move sets the new parent of t to newParent.
+func (api *Api) Move(t, newParent *TreeNode) error {
+	opts := rest.Opts{
+		Method: "PATCH",
+		Path:   fmt.Sprintf("/treenodes/%d/", t.Id),
+		ExtraHeaders: map[string]string{
+			"X-CSRFTOKEN": api.csrfToken(),
+			"Referer":     api.refererURL("treenodes"),
+		},
+	}
+	payload := struct {
+		Parent string `json:"parent"`
+	}{
+		Parent: newParent.URL,
+	}
+	fs.Debugf(api, "setting new parent on %v to %v", t.Id, newParent.Id)
+	resp, err := api.client.CallJSON(context.TODO(), &opts, &payload, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // Remove a treenode.
 func (api *Api) Remove(t *TreeNode) error {
 	opts := rest.Opts{

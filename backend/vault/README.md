@@ -3,6 +3,65 @@
 Experimental support for Internet Archive Vault Digital Preservation System in
 Rclone. This is work-in-progress and we are happy about feedback.
 
+* [x] about
+* [ ] authorize
+* [ ] backend
+* [x] bisync
+* [x] cat
+* [ ] check
+* [x] checksum
+* [ ] cleanup
+* [ ] completion
+* [ ] config
+* [x] copy
+* [x] copyto
+* [x] copyurl
+* [ ] cryptcheck
+* [ ] cryptdecode
+* [ ] dedupe
+* [x] delete
+* [x] deletefile
+* [ ] genautocomplete
+* [ ] gendocs
+* [x] hashsum
+* [ ] help
+* [x] link
+* [ ] listremotes
+* [x] ls
+* [x] lsd
+* [x] lsf
+* [x] lsjson
+* [x] lsl
+* [x] md5sum
+* [x] mkdir
+* [ ] mount
+* [x] move
+* [x] moveto
+* [x] ncdu
+* [ ] obscure
+* [ ] purge
+* [ ] rc
+* [x] rcat
+* [ ] rcd
+* [x] rmdir
+* [x] rmdirs
+* [ ] selfupdate
+* [x] serve
+* [ ] settier
+* [x] sha1sum
+* [x] size
+* [x] sync
+* [ ] test
+* [x] touch
+* [x] tree
+* [ ] version
+
+----
+
+
+
+
+
 ## Configuration
 
 In you rclone config, add the following section.

@@ -77,6 +77,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		PutStream:               f.PutStream,
 		UserInfo:                f.UserInfo,
 		Disconnect:              f.Disconnect,
+		DirMove:                 f.DirMove,
 	}
 	return f, nil
 }
@@ -381,6 +382,68 @@ func (f *Fs) Disconnect(ctx context.Context) error {
 	return nil
 }
 
+func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string) error {
+	fs.Debugf(f, "dir move: %v [%v] => %v", src.Root(), srcRemote, f.root)
+	srcTreeNode, err := f.api.ResolvePath(src.Root())
+	if err != nil {
+		return err
+	}
+	srcDirParent := path.Dir(src.Root())
+	srcDirParentTreeNode, err := f.api.ResolvePath(srcDirParent)
+	if err != nil {
+		return err
+	}
+	dstDirParent := path.Dir(f.root)
+	dstDirParentTreeNode, err := f.api.ResolvePath(dstDirParent)
+	if err != nil {
+		return err
+	}
+	if srcDirParentTreeNode.Id == dstDirParentTreeNode.Id {
+		fs.Debugf(f, "move is a rename")
+		t, err := f.api.ResolvePath(src.Root())
+		if err != nil {
+			return err
+		}
+		return f.api.Rename(t, path.Base(f.root))
+	} else {
+		switch {
+		case srcTreeNode.NodeType == "FILE":
+			// If f.root exists and is a directory, we can move the file in
+			// there; if f.root does not exists, we treat the parent as the dir
+			// and the base as the file to copy to.
+			rootTreeNode, err := f.api.ResolvePath(f.root)
+			if err == nil {
+				if err := f.api.Move(srcTreeNode, rootTreeNode); err != nil {
+					return err
+				}
+			} else {
+				dstDir := path.Dir(f.root)
+				if err := f.mkdir(ctx, dstDir); err != nil {
+					return err
+				}
+				dstDirTreeNode, err := f.api.ResolvePath(dstDir)
+				if err != nil {
+					return err
+				}
+				if err := f.api.Move(srcTreeNode, dstDirTreeNode); err != nil {
+					return err
+				}
+				if path.Base(f.root) != path.Base(src.Root()) {
+					return f.api.Rename(srcTreeNode, path.Base(f.root))
+				}
+			}
+		case srcTreeNode.NodeType == "FOLDER" || srcTreeNode.NodeType == "COLLECTION":
+			fs.Debugf(f, "moving dir to %v", f.root)
+			p, err := f.api.ResolvePath(f.root)
+			if err != nil {
+				return err
+			}
+			return f.api.Move(srcTreeNode, p)
+		}
+	}
+	return nil
+}
+
 // Fs helpers
 // ----------
 
@@ -531,6 +594,7 @@ func (dir *Dir) ID() string { return dir.treeNode.Path }
 
 var (
 	_ fs.Abouter      = (*Fs)(nil)
+	_ fs.DirMover     = (*Fs)(nil)
 	_ fs.Fs           = (*Fs)(nil)
 	_ fs.PublicLinker = (*Fs)(nil)
 	_ fs.PutStreamer  = (*Fs)(nil)

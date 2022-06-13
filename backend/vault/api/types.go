@@ -223,6 +223,28 @@ func (t *TreeNode) MimeType() string {
 	}
 }
 
+// ParentTreeNodeIdentifier returns the parent treenode id if found or the
+// empty string.
+func (t *TreeNode) ParentTreeNodeIdentifier() string {
+	v, ok := t.Parent.(string)
+	if !ok {
+		return ""
+	}
+	switch {
+	case v == "":
+		return ""
+	case !strings.HasPrefix(v, "http"):
+		return v
+	default:
+		re := regexp.MustCompile(`^http.*/api/treenodes/([0-9]{1,})/?$`)
+		matches := re.FindStringSubmatch(v)
+		if len(matches) != 2 {
+			return ""
+		}
+		return matches[1]
+	}
+}
+
 // OrganizationIdentifier is a helper to get the organization id from a user.
 func (u *User) OrganizationIdentifier() string {
 	switch {

@@ -23,6 +23,12 @@ type Cache struct {
 	m            map[string]interface{}
 }
 
+func (c *Cache) Reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m = make(map[string]interface{})
+}
+
 // SetGroup set a key within a group.
 func (c *Cache) SetGroup(k, group string, v interface{}) {
 	c.Set(c.groupKeyFunc(k, group), v)
@@ -51,7 +57,7 @@ func (c *Cache) Get(k string) interface{} {
 func Atos(v interface{}) string {
 	b, err := json.Marshal(v)
 	if err != nil {
-		panic(fmt.Sprintf("keyFrom: %v", v))
+		panic(fmt.Sprintf("atos: %v", v))
 	}
 	return string(b)
 }
