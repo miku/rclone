@@ -11,6 +11,8 @@ work-in-progress. Glad about any feedback:
 
 * once an upload starts, it cannot be interrupted
 * the exit code from a failed upload currently may be zero
+* read and write support **only on the command line**
+* partial read support (no write) for *mount* and *serve* commands
 
 ----
 
