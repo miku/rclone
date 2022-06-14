@@ -24,9 +24,9 @@ work-in-progress. Glad about any feedback (slack,
 
 Direct links:
 
-* [rclone-darwin](https://archive.org/download/rclone-v1.59.0-beta.6247.16c32ad70.ia-wt-1168/rclone-darwin)
-* [rclone-linux](https://archive.org/download/rclone-v1.59.0-beta.6247.16c32ad70.ia-wt-1168/rclone-linux)
-* [rclone-windows](https://archive.org/download/rclone-v1.59.0-beta.6247.16c32ad70.ia-wt-1168/rclone.exe)
+* [rclone-darwin](https://archive.org/download/rclone-v1.59.0-beta.6247.16c32ad70.ia-wt-1168/rclone-darwin) (MacOS)
+* [rclone-linux](https://archive.org/download/rclone-v1.59.0-beta.6247.16c32ad70.ia-wt-1168/rclone-linux) (Linux)
+* [rclone.exe](https://archive.org/download/rclone-v1.59.0-beta.6247.16c32ad70.ia-wt-1168/rclone.exe) (Windows)
 
 ## Building the custom rclone binary
 
