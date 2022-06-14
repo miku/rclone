@@ -7,6 +7,11 @@ work-in-progress. Glad about any feedback:
 * bugs
 * unintuitive behaviour
 
+## Known limitations
+
+* once an upload starts, it cannot be interrupted
+* the exit code from a failed upload currently may be zero
+
 ----
 
 ## Building the custom rclone binary
