@@ -82,6 +82,20 @@ Free:    1021.109 GiB
 Objects: 19.955k
 ```
 
+* [x] config userinfo
+
+```
+$ rclone config userinfo vault:/
+DefaultFixityFrequency: TWICE_YEARLY
+             FirstName:
+             LastLogin: 2022-06-14T17:09:11.222339Z
+              LastName:
+          Organization: SuperOrg
+                  Plan: Basic
+            QuotaBytes: 1099511627776
+              Username: admin
+```
+
 ### Listing files
 
 * [x] ls
