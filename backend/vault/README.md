@@ -2,7 +2,9 @@
 
 Experimental CLI support for Internet Archive Vault Digital Preservation System
 in [Rclone](https://rclone.org/). This is private fork of rclone and
-work-in-progress. Glad about any feedback:
+work-in-progress. Glad about any feedback (slack,
+[WT-1168](https://webarchive.jira.com/browse/WT-1168),
+[martin@archive.org](mailto:martin@archive.org), ...):
 
 * bugs
 * unintuitive behaviour
