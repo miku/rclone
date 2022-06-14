@@ -1,70 +1,44 @@
 # Rclone for Vault
 
-Experimental support for Internet Archive Vault Digital Preservation System in
-Rclone. This is work-in-progress and we are happy about feedback.
+Experimental CLI support for Internet Archive Vault Digital Preservation System
+in [Rclone](https://rclone.org/). This is private fork of rclone and
+work-in-progress. Glad about any feedback:
 
-* [x] about
-* [ ] authorize
-* [ ] backend
-* [x] bisync
-* [x] cat
-* [ ] check
-* [x] checksum
-* [ ] cleanup
-* [ ] completion
-* [ ] config
-* [x] copy
-* [x] copyto
-* [x] copyurl
-* [ ] cryptcheck
-* [ ] cryptdecode
-* [ ] dedupe
-* [x] delete
-* [x] deletefile
-* [ ] genautocomplete
-* [ ] gendocs
-* [x] hashsum
-* [ ] help
-* [x] link
-* [ ] listremotes
-* [x] ls
-* [x] lsd
-* [x] lsf
-* [x] lsjson
-* [x] lsl
-* [x] md5sum
-* [x] mkdir
-* [ ] mount
-* [x] move
-* [x] moveto
-* [x] ncdu
-* [ ] obscure
-* [ ] purge
-* [ ] rc
-* [x] rcat
-* [ ] rcd
-* [x] rmdir
-* [x] rmdirs
-* [ ] selfupdate
-* [x] serve
-* [ ] settier
-* [x] sha1sum
-* [x] size
-* [x] sync
-* [ ] test
-* [x] touch
-* [x] tree
-* [ ] version
+* bugs
+* unintuitive behaviour
 
 ----
 
+## Building the custom rclone binary
 
+Building requires the Go toolchain installed.
 
-
+```
+$ git clone https://git.archive.org/martin/rclone.git
+$ cd rclone
+$ git checkout ia-wt-1168
+$ make
+$ ./rclone version
+rclone v1.59.0-beta.6244.66b9ef95f.sample
+- os/version: ubuntu 20.04 (64 bit)
+- os/kernel: 5.13.0-48-generic (x86_64)
+- os/type: linux
+- os/arch: amd64
+- go/version: go1.18.3
+- go/linking: dynamic
+- go/tags: none
+```
 
 ## Configuration
 
-In you rclone config, add the following section.
+There is a single configuration file for rclone, located by default under:
+
+```
+~/.config/rclone/rclone.conf
+```
+
+In you rclone config, add the following section for vault (the section name is
+arbitrary; used to refer to the remote).
 
 ```
 [vault]
@@ -175,20 +149,52 @@ will be the name of the collection, and anything below: folders).
 
 ```shell
 $ rclone mkdir vault:/X1
+```
 
+By default, behaviour is similar to `mkdir -p`, i.e. parents are created, if
+they do not exist:
+
+```
 $ rclone mkdir vault:/X2/a/b/c
 ```
 
 ### Uploading single files and trees
 
-* [ ] copy
-* [ ] copyto
-* [ ] copyurl
+* [x] copy
+* [x] copyto
+* [x] copyurl
+
+Copy operations to vault will create directories as needed:
+
+```
+$ rclone copy ~/tmp/somedir vault:/ExampleCollection/somedir
+```
 
 ### Sync
 
-* [ ] sync
+* [x] sync
+
+Sync is similar to copy, can be used to successively sync file to vault.
+
+```
+$ rclone sync ~/tmp/somedir vault:/ExampleCollection/somedir
+```
 
 ### Downloading files and trees
 
-* [ ] copy
+* [x] copy
+
+Copy can be used to copy a file or tree from vault to local disk.
+
+```
+$ rclone copy vault:/ExampleCollection/somedir ~/tmp/somecopy
+```
+
+### Streaming files
+
+* [x] cat
+
+```
+$ rclone cat vault:/ExampleCollection/somedir/f.txt
+```
+
