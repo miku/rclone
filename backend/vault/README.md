@@ -50,7 +50,8 @@ endpoint = http://localhost:8000/api
 
 ## Examples
 
-Note: Most examples show abbreviated outputs.
+Note: Most examples show abbreviated outputs. To show debug output, append `-v`
+or `-vv` to the command.
 
 ### Quota and Usage
 
@@ -168,6 +169,12 @@ Copy operations to vault will create directories as needed:
 
 ```
 $ rclone copy ~/tmp/somedir vault:/ExampleCollection/somedir
+```
+
+If you configure other remotes, like Dropbox, Google Drive, Amazon S3, etc. you can copy files directly from there to vault:
+
+```
+$ rclone copy dropbox:/iris-data.csv vault:/C104
 ```
 
 ### Sync
