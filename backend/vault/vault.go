@@ -542,6 +542,14 @@ func (o *Object) MimeType(ctx context.Context) string {
 	return o.treeNode.MimeType()
 }
 
+// ID returns treenode path, which should be unique for any object in vault.
+func (o *Object) ID() string {
+	if o.treeNode == nil {
+		return ""
+	}
+	return o.treeNode.Path
+}
+
 func (o *Object) absPath() string {
 	return path.Join(o.fs.Root(), o.remote)
 }
@@ -601,5 +609,6 @@ var (
 	_ fs.UserInfoer   = (*Fs)(nil)
 	_ fs.MimeTyper    = (*Object)(nil)
 	_ fs.Object       = (*Object)(nil)
+	_ fs.IDer         = (*Object)(nil)
 	_ fs.Directory    = (*Dir)(nil)
 )
