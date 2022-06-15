@@ -3,6 +3,7 @@ package vault
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/rclone/rclone/backend/vault/api"
 	"github.com/rclone/rclone/fs"
+	"github.com/rclone/rclone/fs/operations"
 	"github.com/rclone/rclone/lib/atexit"
 	"github.com/rclone/rclone/lib/rest"
 	"github.com/schollz/progressbar/v3"
@@ -26,7 +28,7 @@ type batcher struct {
 	fs           *Fs             // fs.root will be the parent collection or folder
 	atexit       atexit.FnHandle // callback
 	parent       *api.TreeNode   // resolved and possibly new parent treenode
-	once         sync.Once       // only batch wrap up once
+	shutOnce     sync.Once       // only batch wrap up once
 	mu           sync.Mutex      // protect items
 	items        []*batchItem    // file metadata and content for deposit items
 	showProgress bool            // show progress bar
@@ -140,7 +142,7 @@ func (b *batcher) Add(item *batchItem) {
 // process from here with an exit code of 1, if anything fails.
 func (b *batcher) Shutdown() {
 	fs.Debugf(b, "shutdown started")
-	b.once.Do(func() {
+	b.shutOnce.Do(func() {
 		atexit.Unregister(b.atexit)
 		signal.Reset(os.Interrupt)
 		if len(b.items) == 0 {
@@ -191,9 +193,6 @@ func (b *batcher) Shutdown() {
 				log.Fatalf("stat: %v", err)
 			}
 			size := fi.Size()
-			if b.showProgress {
-				bar.Add(int(size))
-			}
 			params := url.Values{
 				"depositId":            []string{strconv.Itoa(int(depositId))},
 				"flowChunkNumber":      []string{"1"},
@@ -223,6 +222,7 @@ func (b *batcher) Shutdown() {
 			if err != nil {
 				log.Fatalf("failed to open temporary file: %v", err)
 			}
+			r := io.TeeReader(itemf, bar)
 			opts = rest.Opts{
 				Method:               "POST",
 				Path:                 "/flow_chunk",
@@ -230,7 +230,7 @@ func (b *batcher) Shutdown() {
 				ContentLength:        &size,
 				MultipartContentName: "file",
 				MultipartFileName:    path.Base(item.src.Remote()),
-				Body:                 itemf,
+				Body:                 r,
 			}
 			resp, err = b.fs.api.CallJSON(ctx, &opts, nil, nil)
 			if err != nil {
@@ -246,6 +246,7 @@ func (b *batcher) Shutdown() {
 				log.Fatalf("cleanup: %v", err)
 			}
 		}
-		fs.Logf(b, "upload done, deposited %d item(s)", len(b.items))
+		fs.Logf(b, "upload done, deposited %s, %d item(s)",
+			operations.SizeString(totalSize, true), len(b.items))
 	})
 }
