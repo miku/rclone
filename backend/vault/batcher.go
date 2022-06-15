@@ -3,6 +3,7 @@ package vault
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -20,7 +21,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-// batcher is used to group mass upload for a deposit.
+// batcher is used to group files for a deposit.
 type batcher struct {
 	fs           *Fs             // fs.root will be the parent collection or folder
 	atexit       atexit.FnHandle // callback
@@ -135,7 +136,8 @@ func (b *batcher) Add(item *batchItem) {
 
 // Shutdown creates a new deposit request for all batch items and uploads them.
 // This is the one of the last things rclone run before exiting. There is no
-// error to return.
+// way to relay an error to return from here, so we deliberately exit the
+// process from here with an exit code of 1, if anything fails.
 func (b *batcher) Shutdown() {
 	fs.Debugf(b, "shutdown started")
 	b.once.Do(func() {
@@ -167,8 +169,7 @@ func (b *batcher) Shutdown() {
 		case b.parent.NodeType == "COLLECTION":
 			c, err := b.fs.api.TreeNodeToCollection(b.parent)
 			if err != nil {
-				fs.LogLevelPrintf(fs.LogLevelError, b, "failed to resolve treenode to collection")
-				return
+				log.Fatalf("failed to resolve treenode to collection")
 			}
 			rdr.CollectionId = c.Identifier()
 		case b.parent.NodeType == "FOLDER":
@@ -176,8 +177,7 @@ func (b *batcher) Shutdown() {
 		}
 		depositId, err := b.fs.api.RegisterDeposit(ctx, rdr)
 		if err != nil {
-			fs.LogLevelPrintf(fs.LogLevelError, b, "deposit failed: %v", err)
-			return
+			log.Fatalf("deposit failed: %v", err)
 		}
 		fs.Debugf(b, "created deposit %v", depositId)
 		if b.showProgress {
@@ -185,10 +185,10 @@ func (b *batcher) Shutdown() {
 		}
 		for i, item := range b.items {
 			// Upload file with a single chunk. First issue a GET, if that is a
-			// 204 then a POST.
+			// 204 then follow up with a POST.
 			fi, err := os.Stat(item.filename)
 			if err != nil {
-				return
+				log.Fatalf("stat: %v", err)
 			}
 			size := fi.Size()
 			if b.showProgress {
@@ -213,18 +213,15 @@ func (b *batcher) Shutdown() {
 			}
 			resp, err := b.fs.api.Call(ctx, &opts)
 			if err != nil {
-				fs.LogLevelPrintf(fs.LogLevelError, b, "call failed: %v", err)
-				return
+				log.Fatalf("call failed: %v", err)
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode != 204 {
-				fs.LogLevelPrintf(fs.LogLevelError, b, "expected HTTP 204, got %v", resp.StatusCode)
-				return
+				log.Fatalf("expected HTTP 204, got %v", resp.StatusCode)
 			}
 			itemf, err := os.Open(item.filename)
 			if err != nil {
-				fs.LogLevelPrintf(fs.LogLevelError, b, "failed to open temporary file: %v", err)
-				return
+				log.Fatalf("failed to open temporary file: %v", err)
 			}
 			opts = rest.Opts{
 				Method:               "POST",
@@ -237,17 +234,16 @@ func (b *batcher) Shutdown() {
 			}
 			resp, err = b.fs.api.CallJSON(ctx, &opts, nil, nil)
 			if err != nil {
-				fs.LogLevelPrintf(fs.LogLevelError, b, "upload failed: %v", err)
-				return
+				log.Fatalf("upload failed: %v", err)
 			}
 			if err := resp.Body.Close(); err != nil {
-				fs.LogLevelPrintf(fs.LogLevelWarning, b, "body close: %v", err)
+				log.Fatalf("body close: %v", err)
 			}
 			if err := itemf.Close(); err != nil {
-				fs.LogLevelPrintf(fs.LogLevelWarning, b, "file close: %v", err)
+				log.Fatalf("file close: %v", err)
 			}
 			if err := os.Remove(item.filename); err != nil {
-				fs.LogLevelPrintf(fs.LogLevelWarning, b, "cleanup: %v", err)
+				log.Fatalf("cleanup: %v", err)
 			}
 		}
 		fs.Logf(b, "upload done, deposited %d item(s)", len(b.items))
