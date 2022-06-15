@@ -25,7 +25,7 @@ import (
 const (
 	// maxResponseBody limit in bytes when reading a response body.
 	maxResponseBody    = 1 << 24
-	VaultVersionHeader = "X-VAULT-API-VERSION"
+	VaultVersionHeader = "X-Vault-API-Version"
 )
 
 var (
