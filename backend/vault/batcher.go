@@ -204,7 +204,7 @@ func (b *batcher) Shutdown() {
 				"flowRelativePath":     []string{files[i].RelativePath},
 				"flowTotalChunks":      []string{"1"},
 				"flowTotalSize":        []string{strconv.Itoa(int(size))},
-				"upload_token":         []string{"my_token"},
+				"upload_token":         []string{"my_token"}, // just copy'n'pasting ...
 			}
 			opts := rest.Opts{
 				Method:     "GET",

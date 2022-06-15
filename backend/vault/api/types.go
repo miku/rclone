@@ -589,7 +589,7 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	}
 	if !vs.Has("limit") && !vs.Has("offset") {
 		vs.Set("offset", "0")
-		vs.Set("limit", "5000")
+		vs.Set("limit", "5000") // TODO: implement pagination
 	}
 	var (
 		opts = rest.Opts{

@@ -382,6 +382,7 @@ func (f *Fs) Disconnect(ctx context.Context) error {
 	return nil
 }
 
+// DirMove implements server side renames and moves.
 func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string) error {
 	fs.Debugf(f, "dir move: %v [%v] => %v", src.Root(), srcRemote, f.root)
 	srcTreeNode, err := f.api.ResolvePath(src.Root())
@@ -557,6 +558,8 @@ func (o *Object) absPath() string {
 // Dir
 // ---
 
+// Dir represents a collection or folder, something that can contain other
+// objects.
 type Dir struct {
 	fs       *Fs
 	remote   string
