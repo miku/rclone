@@ -59,7 +59,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 	if err := api.Login(); err != nil {
 		return nil, err
 	}
-	if api.Version() != "" && api.Version() != api.VersionSupported {
+	if v := api.Version(ctx); v != "" && v != api.VersionSupported {
 		return nil, ErrVersionMismatch
 	}
 	f := &Fs{
@@ -260,7 +260,7 @@ func (f *Fs) mkdir(ctx context.Context, dir string) error {
 		fs.Debugf(f, "path exists: %v [%v]", dir, t.NodeType)
 		return nil
 	case f.root == "/" || strings.Count(dir, "/") == 1:
-		return f.api.CreateCollection(path.Base(dir))
+		return f.api.CreateCollection(ctx, path.Base(dir))
 	default:
 		segments := pathSegments(dir, "/")
 		if len(segments) == 0 {
@@ -279,11 +279,11 @@ func (f *Fs) mkdir(ctx context.Context, dir string) error {
 				parent = t
 				continue
 			case t == nil && i == 0:
-				if err := f.api.CreateCollection(s); err != nil {
+				if err := f.api.CreateCollection(ctx, s); err != nil {
 					return err
 				}
 			default:
-				if err := f.api.CreateFolder(parent, s); err != nil {
+				if err := f.api.CreateFolder(ctx, parent, s); err != nil {
 					return err
 				}
 			}
@@ -306,7 +306,7 @@ func (f *Fs) Rmdir(ctx context.Context, dir string) error {
 	if t.NodeType != "FOLDER" {
 		return fmt.Errorf("can only drop folders, not %v", t.NodeType)
 	}
-	return f.api.Remove(t)
+	return f.api.Remove(ctx, t)
 }
 
 // Fs extra
@@ -405,7 +405,7 @@ func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string
 		if err != nil {
 			return err
 		}
-		return f.api.Rename(t, path.Base(f.root))
+		return f.api.Rename(ctx, t, path.Base(f.root))
 	} else {
 		switch {
 		case srcTreeNode.NodeType == "FILE":
@@ -414,7 +414,7 @@ func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string
 			// and the base as the file to copy to.
 			rootTreeNode, err := f.api.ResolvePath(f.root)
 			if err == nil {
-				if err := f.api.Move(srcTreeNode, rootTreeNode); err != nil {
+				if err := f.api.Move(ctx, srcTreeNode, rootTreeNode); err != nil {
 					return err
 				}
 			} else {
@@ -426,11 +426,11 @@ func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string
 				if err != nil {
 					return err
 				}
-				if err := f.api.Move(srcTreeNode, dstDirTreeNode); err != nil {
+				if err := f.api.Move(ctx, srcTreeNode, dstDirTreeNode); err != nil {
 					return err
 				}
 				if path.Base(f.root) != path.Base(src.Root()) {
-					return f.api.Rename(srcTreeNode, path.Base(f.root))
+					return f.api.Rename(ctx, srcTreeNode, path.Base(f.root))
 				}
 			}
 		case srcTreeNode.NodeType == "FOLDER" || srcTreeNode.NodeType == "COLLECTION":
@@ -439,7 +439,7 @@ func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string
 			if err != nil {
 				return err
 			}
-			return f.api.Move(srcTreeNode, p)
+			return f.api.Move(ctx, srcTreeNode, p)
 		}
 	}
 	return nil
@@ -533,7 +533,7 @@ func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, op
 	return nil
 }
 func (o *Object) Remove(ctx context.Context) error {
-	return o.fs.api.Remove(o.treeNode)
+	return o.fs.api.Remove(ctx, o.treeNode)
 }
 
 // Object extra

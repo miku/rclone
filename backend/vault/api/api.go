@@ -23,9 +23,12 @@ import (
 )
 
 const (
-	// maxResponseBody limit in bytes when reading a response body.
-	maxResponseBody    = 1 << 24
+	// VaultVersionHeader as served by vault site.
 	VaultVersionHeader = "X-Vault-API-Version"
+	// VersionSupported is the version of the vault API this package implements.
+	VersionSupported = "1"
+	// maxResponseBody limit in bytes when reading a response body.
+	maxResponseBody = 1 << 24
 )
 
 var (
@@ -58,7 +61,7 @@ func New(endpoint, username, password string) *Api {
 		Endpoint:         endpoint,
 		Username:         username,
 		Password:         password,
-		VersionSupported: "1",
+		VersionSupported: VersionSupported,
 		client:           rest.NewClient(fshttp.NewClient(ctx)).SetRoot(endpoint),
 		loginPath:        "/accounts/login/", // trailing slash required, cf. django APPEND_SLASH
 		timeout:          5 * time.Second,
@@ -68,12 +71,12 @@ func New(endpoint, username, password string) *Api {
 
 // Version returns the API version supported by the endpoint, transmitted in an
 // HTTP header.
-func (api *Api) Version() string {
+func (api *Api) Version(ctx context.Context) string {
 	opts := rest.Opts{
 		Method: "GET",
 		Path:   "/",
 	}
-	resp, err := api.client.Call(context.TODO(), &opts)
+	resp, err := api.client.Call(ctx, &opts)
 	if err != nil {
 		return ""
 	}
@@ -83,7 +86,7 @@ func (api *Api) Version() string {
 
 // String prints out name and version supported.
 func (api *Api) String() string {
-	return fmt.Sprintf("vault (client v%s)", api.VersionSupported)
+	return fmt.Sprintf("vault (v%s)", api.VersionSupported)
 }
 
 // Login sets up a session, which should be valid for the client until logout
@@ -141,8 +144,8 @@ func (api *Api) Login() (err error) {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	// You are seeing this message because this HTTPS site requires a “Referer
-	// header” to be sent by your Web browser, but none was sent. This header
+	// You are seeing this message because this HTTPS site requires a "Referer
+	// header" to be sent by your Web browser, but none was sent. This header
 	// is required for security reasons, to ensure that your browser is not
 	// being hijacked by third parties.
 	req.Header.Set("Referer", loginURL)
@@ -165,8 +168,8 @@ func (api *Api) Logout() {
 	api.client.SetHeader("Cookie", "")
 }
 
-// Call exposes the current client for call that are not mapped to separate
-// functions. TODO: we should not leak this.
+// Call exposes the current client to the outside, so the caller can reuse
+// the autheticated client.
 func (api *Api) Call(ctx context.Context, opts *rest.Opts) (*http.Response, error) {
 	return api.client.Call(ctx, opts)
 }
@@ -178,15 +181,15 @@ func (api *Api) CallJSON(ctx context.Context, opts *rest.Opts, req, resp interfa
 }
 
 // SplitPath returns the treenodes for the collection and leaf object for a
-// given path as well as the path without the collection. It is an error if the
-// collection cannot be found.
+// given absolute path as well as the path without the collection. It is an
+// error if the collection cannot be found.
 func (api *Api) SplitPath(p string) (*PathInfo, error) {
 	if !strings.HasPrefix(p, "/") {
 		return nil, fmt.Errorf("absolute path required: %v", p)
 	}
 	var (
 		err   error
-		pi    = PathInfo{}
+		pi    PathInfo
 		parts = strings.Split(p, "/")
 	)
 	switch {
@@ -221,7 +224,6 @@ func (api *Api) DepositStatus(id int64) (*DepositStatus, error) {
 	var ds DepositStatus
 	resp, err := api.client.CallJSON(context.TODO(), &opts, nil, &ds)
 	if err != nil {
-		log.Println("xxx")
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -230,18 +232,19 @@ func (api *Api) DepositStatus(id int64) (*DepositStatus, error) {
 
 // Create a collection with a given name. This would corresponds to a directory
 // in the root of a mount.
-func (api *Api) CreateCollection(name string) error {
+func (api *Api) CreateCollection(ctx context.Context, name string) error {
+	fs.Debugf(api, "creating collection %v", name)
 	opts := rest.Opts{
 		Method:      "POST",
 		Path:        "/collections/",
 		Body:        strings.NewReader(fmt.Sprintf(`{"name": %q}`, name)),
 		ContentType: "application/json",
 		ExtraHeaders: map[string]string{
-			"X-CSRFTOKEN": api.csrfToken(),
+			"X-CSRFTOKEN": api.csrfToken(ctx),
 			"Referer":     api.refererURL("collections"),
 		},
 	}
-	resp, err := api.client.CallJSON(context.TODO(), &opts, nil, nil)
+	resp, err := api.client.CallJSON(ctx, &opts, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -250,7 +253,7 @@ func (api *Api) CreateCollection(name string) error {
 }
 
 // CreateFolder creates a folder below a given parent treenode.
-func (api *Api) CreateFolder(parent *TreeNode, name string) error {
+func (api *Api) CreateFolder(ctx context.Context, parent *TreeNode, name string) error {
 	fs.Debugf(api, "creating folder %v with parent %v", name, parent.Id)
 	parentURL := fmt.Sprintf("%s/treenodes/%d/", api.Endpoint, parent.Id)
 	opts := rest.Opts{
@@ -263,11 +266,11 @@ func (api *Api) CreateFolder(parent *TreeNode, name string) error {
 		}`, name, parentURL)),
 		ContentType: "application/json",
 		ExtraHeaders: map[string]string{
-			"X-CSRFTOKEN": api.csrfToken(),
+			"X-CSRFTOKEN": api.csrfToken(ctx),
 			"Referer":     api.refererURL("treenodes"),
 		},
 	}
-	resp, err := api.client.CallJSON(context.TODO(), &opts, nil, nil)
+	resp, err := api.client.CallJSON(ctx, &opts, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -276,12 +279,13 @@ func (api *Api) CreateFolder(parent *TreeNode, name string) error {
 }
 
 // Rename updates name of a treenode.
-func (api *Api) Rename(t *TreeNode, name string) error {
+func (api *Api) Rename(ctx context.Context, t *TreeNode, name string) error {
+	fs.Debugf(api, "rename %v to %v", t.Name, name)
 	opts := rest.Opts{
 		Method: "PATCH",
 		Path:   fmt.Sprintf("/treenodes/%d/", t.Id),
 		ExtraHeaders: map[string]string{
-			"X-CSRFTOKEN": api.csrfToken(),
+			"X-CSRFTOKEN": api.csrfToken(ctx),
 			"Referer":     api.refererURL("treenodes"),
 		},
 	}
@@ -290,8 +294,7 @@ func (api *Api) Rename(t *TreeNode, name string) error {
 	}{
 		Name: name,
 	}
-	fs.Debugf(api, "renaming %v", t.Id)
-	resp, err := api.client.CallJSON(context.TODO(), &opts, payload, nil)
+	resp, err := api.client.CallJSON(ctx, &opts, payload, nil)
 	if err != nil {
 		return err
 	}
@@ -300,12 +303,13 @@ func (api *Api) Rename(t *TreeNode, name string) error {
 }
 
 // Move sets the new parent of t to newParent.
-func (api *Api) Move(t, newParent *TreeNode) error {
+func (api *Api) Move(ctx context.Context, t, newParent *TreeNode) error {
+	fs.Debugf(api, "move %v under %v", t.Name, newParent.Name)
 	opts := rest.Opts{
 		Method: "PATCH",
 		Path:   fmt.Sprintf("/treenodes/%d/", t.Id),
 		ExtraHeaders: map[string]string{
-			"X-CSRFTOKEN": api.csrfToken(),
+			"X-CSRFTOKEN": api.csrfToken(ctx),
 			"Referer":     api.refererURL("treenodes"),
 		},
 	}
@@ -314,8 +318,7 @@ func (api *Api) Move(t, newParent *TreeNode) error {
 	}{
 		Parent: newParent.URL,
 	}
-	fs.Debugf(api, "setting new parent on %v to %v", t.Id, newParent.Id)
-	resp, err := api.client.CallJSON(context.TODO(), &opts, &payload, nil)
+	resp, err := api.client.CallJSON(ctx, &opts, &payload, nil)
 	if err != nil {
 		return err
 	}
@@ -324,17 +327,17 @@ func (api *Api) Move(t, newParent *TreeNode) error {
 }
 
 // Remove a treenode.
-func (api *Api) Remove(t *TreeNode) error {
+func (api *Api) Remove(ctx context.Context, t *TreeNode) error {
 	opts := rest.Opts{
 		Method: "DELETE",
 		Path:   fmt.Sprintf("/treenodes/%d/", t.Id),
 		ExtraHeaders: map[string]string{
-			"X-CSRFTOKEN": api.csrfToken(),
+			"X-CSRFTOKEN": api.csrfToken(ctx),
 			"Referer":     api.refererURL("treenodes"),
 		},
 	}
 	fs.Debugf(api, "removing %v", t.Id)
-	resp, err := api.client.Call(context.TODO(), &opts)
+	resp, err := api.client.Call(ctx, &opts)
 	if err != nil {
 		return err
 	}
@@ -352,7 +355,7 @@ func (api *Api) List(t *TreeNode) ([]*TreeNode, error) {
 	})
 }
 
-// ResolvePath resolve an absolute path to a treenode object.
+// ResolvePath resolves an absolute path to a treenode object.
 func (api *Api) ResolvePath(p string) (*TreeNode, error) {
 	t, err := api.root()
 	if err != nil {
@@ -360,7 +363,7 @@ func (api *Api) ResolvePath(p string) (*TreeNode, error) {
 	}
 	// This method only resolves absolute paths. TODO: Should we rather fail?
 	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
+		return nil, fmt.Errorf("resolve: absolute path required")
 	}
 	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
 	segments := strings.Split(strings.TrimRight(p, "/"), "/")[1:]
@@ -378,14 +381,14 @@ func (api *Api) ResolvePath(p string) (*TreeNode, error) {
 		case len(ts) == 0:
 			return nil, fs.ErrorObjectNotFound
 		case len(ts) > 1:
-			log.Printf("[skip] invalid path, more than one parent node found for %v: %v (%v)", t.Id, t.Name, t.NodeType)
-			continue
+			return nil, ErrAmbiguousQuery
 		}
 		t, segments = ts[0], segments[1:]
 	}
 	return t, nil
 }
 
+// RegisterDeposit sends a RegisterDepositRequest to the API and returns the deposit id.
 func (api *Api) RegisterDeposit(ctx context.Context, rdr *RegisterDepositRequest) (id int64, err error) {
 	opts := rest.Opts{
 		Method: "POST",
@@ -415,57 +418,6 @@ func (api *Api) TreeNodeToCollection(t *TreeNode) (*Collection, error) {
 		return nil, fmt.Errorf("collection not found")
 	}
 	return result[0], nil
-}
-
-func (api *Api) refererURL(suffix string) string {
-	return fmt.Sprintf("%s/%s", strings.TrimRight(api.Endpoint, "/"), suffix)
-}
-
-// csrfToken retrieves a CSRF token. Returns an empty string on failure.
-func (api *Api) csrfToken() string {
-	ctx := context.Background()
-	opts := rest.Opts{
-		Method: "GET",
-		Path:   "/users/", // any valid path should do
-		ExtraHeaders: map[string]string{
-			"Accept": "text/html",
-		},
-	}
-	resp, err := api.client.Call(ctx, &opts)
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return ""
-	}
-	b, err := ioutil.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
-	if err != nil {
-		return ""
-	}
-	re := regexp.MustCompile(`csrfToken:[ ]*"([^"]*)"`)
-	matches := re.FindStringSubmatch(string(b))
-	if len(matches) == 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-// root returns the organization not for the api user.
-func (api *Api) root() (*TreeNode, error) {
-	if v := api.cache.GetGroup("root", "default"); v != nil {
-		return v.(*TreeNode), nil
-	}
-	organization, err := api.Organization()
-	if err != nil {
-		return nil, err
-	}
-	t, err := api.GetTreeNode(organization.TreeNodeIdentifier())
-	if err != nil {
-		return nil, err
-	}
-	api.cache.SetGroup("root", "default", t)
-	return t, nil
 }
 
 // User returns the current user.
@@ -500,4 +452,55 @@ func (api *Api) Plan() (*Plan, error) {
 		return nil, err
 	}
 	return api.GetPlan(organization.PlanIdentifier())
+}
+
+// refererURL returns a URL that passes as referer, suffix is "collection",
+// "treenode", ...
+func (api *Api) refererURL(suffix string) string {
+	return fmt.Sprintf("%s/%s", strings.TrimRight(api.Endpoint, "/"), suffix)
+}
+
+// csrfToken retrieves a CSRF token. Returns an empty string on failure.
+func (api *Api) csrfToken(ctx context.Context) string {
+	opts := rest.Opts{
+		Method: "GET",
+		Path:   "/users/", // any valid path should do
+		ExtraHeaders: map[string]string{
+			"Accept": "text/html",
+		},
+	}
+	resp, err := api.client.Call(ctx, &opts)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return ""
+	}
+	b, err := ioutil.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
+	if err != nil {
+		return ""
+	}
+	re := regexp.MustCompile(`csrfToken:[ ]*"([^"]*)"`)
+	if matches := re.FindStringSubmatch(string(b)); len(matches) == 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+// root returns the organization treenode for the current API user.
+func (api *Api) root() (*TreeNode, error) {
+	if v := api.cache.GetGroup("root", "default"); v != nil {
+		return v.(*TreeNode), nil
+	}
+	organization, err := api.Organization()
+	if err != nil {
+		return nil, err
+	}
+	t, err := api.GetTreeNode(organization.TreeNodeIdentifier())
+	if err != nil {
+		return nil, err
+	}
+	api.cache.SetGroup("root", "default", t)
+	return t, nil
 }

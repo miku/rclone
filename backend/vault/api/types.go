@@ -107,11 +107,12 @@ type RegisterDepositRequest struct {
 	TotalSize    int64   `json:"total_size"`
 }
 
+// RegisterDepositResponse is the response to a successful RegisterDepositRequest.
 type RegisterDepositResponse struct {
 	ID int64 `json:"deposit_id"`
 }
 
-// PathInfo can be created from path in vault.
+// PathInfo can be obtained from an absolute path.
 type PathInfo struct {
 	CollectionTreeNode *TreeNode
 	LeafTreeNode       *TreeNode
@@ -165,17 +166,12 @@ func (stats *CollectionStats) TotalSize() (result int64) {
 	return
 }
 
+// NumFiles returns the total number of files across all collections.
 func (stats *CollectionStats) NumFiles() (result int64) {
 	for _, c := range stats.Collections {
 		result += c.FileCount
 	}
 	return
-}
-
-// Completed returns true, if deposit contained at least one file and
-// everything has been uploaded successfully.
-func (d *DepositStatus) Completed() bool {
-	return d.TotalFiles > 0 && d.UploadedFiles == d.TotalFiles && d.ErroredFiles == 0 && d.FileQueue == 0
 }
 
 // Content either returns the real content or some dummy bytes of the size of
