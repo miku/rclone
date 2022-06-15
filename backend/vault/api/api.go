@@ -35,11 +35,13 @@ var (
 
 // Api wraps the vault API. Django REST Framework has some support for export a
 // swagger definition, which we may switch over at some point (it was not
-// enabled). Login required.
+// enabled). Most operations will require an authenticated client.
 type Api struct {
-	Endpoint         string
-	Username         string
-	Password         string
+	Endpoint string
+	Username string
+	Password string
+	// VersionSupported by this implementation. This is should checked before
+	// any other operation.
 	VersionSupported string
 
 	client    *rest.Client
@@ -48,7 +50,8 @@ type Api struct {
 	cache     *cache.Cache
 }
 
-// New sets up a new api, no further checks at this time.
+// New sets up a new api, no further checks (e.g. for api compatibility) at
+// this time.
 func New(endpoint, username, password string) *Api {
 	ctx := context.Background()
 	return &Api{
@@ -63,7 +66,8 @@ func New(endpoint, username, password string) *Api {
 	}
 }
 
-// Version returns the API version transmitted in HTTP (proposed).
+// Version returns the API version supported by the endpoint, transmitted in an
+// HTTP header.
 func (api *Api) Version() string {
 	opts := rest.Opts{
 		Method: "GET",
@@ -77,8 +81,9 @@ func (api *Api) Version() string {
 	return resp.Header.Get(VaultVersionHeader)
 }
 
+// String prints out name and version supported.
 func (api *Api) String() string {
-	return fmt.Sprintf("vault api (v%s)", api.VersionSupported)
+	return fmt.Sprintf("vault (client v%s)", api.VersionSupported)
 }
 
 // Login sets up a session, which should be valid for the client until logout
@@ -143,7 +148,7 @@ func (api *Api) Login() (err error) {
 	req.Header.Set("Referer", loginURL)
 	resp, err = client.Do(req)
 	if err != nil {
-		return fmt.Errorf("vault login post: %w", err)
+		return fmt.Errorf("vault login: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
@@ -270,7 +275,7 @@ func (api *Api) CreateFolder(parent *TreeNode, name string) error {
 	return nil
 }
 
-// Rename updates name of a treenode. TODO: ...
+// Rename updates name of a treenode.
 func (api *Api) Rename(t *TreeNode, name string) error {
 	opts := rest.Opts{
 		Method: "PATCH",
@@ -421,7 +426,7 @@ func (api *Api) csrfToken() string {
 	ctx := context.Background()
 	opts := rest.Opts{
 		Method: "GET",
-		Path:   "/users/", // any path valid path should do
+		Path:   "/users/", // any valid path should do
 		ExtraHeaders: map[string]string{
 			"Accept": "text/html",
 		},

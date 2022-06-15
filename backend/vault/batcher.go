@@ -32,12 +32,15 @@ type batcher struct {
 }
 
 // newBatcher creates a new batcher, which will execute most code at rclone
-// exit time.
+// exit time. Note: this will create the fs.Root if it does not exist, hence
+// newBatcher should only be called, if we are actually performing a batch
+// operation (e.g. in Put). We run "mkdir" here and not in the atexit handler,
+// since here we can still return errors (which we currently cannot in the
+// atexit handler).
 func newBatcher(ctx context.Context, f *Fs) (*batcher, error) {
 	t, err := f.api.ResolvePath(f.root)
 	if err != nil {
 		if err == fs.ErrorObjectNotFound {
-			// TODO: We only want this, if we actually have a Put request (not any, as currently).
 			if err = f.mkdir(ctx, f.root); err != nil {
 				return nil, err
 			}
@@ -71,10 +74,10 @@ func newBatcher(ctx context.Context, f *Fs) (*batcher, error) {
 	return b, nil
 }
 
-// batchItem for Put and Update requests, basically capturing argument.
+// batchItem for Put and Update requests, basically capturing those methods' arguments.
 type batchItem struct {
 	root     string // the fs root
-	filename string // temporary file with content
+	filename string // some temporary file with contents
 	src      fs.ObjectInfo
 	options  []fs.OpenOption
 }
@@ -82,7 +85,7 @@ type batchItem struct {
 // ToFile turns a batch item into a File for a deposit request.
 func (item *batchItem) ToFile(ctx context.Context) *api.File {
 	var (
-		randInt        = 1_000_000_000 + rand.Intn(8_999_999_999)
+		randInt        = 1_000_000_000 + rand.Intn(8_999_999_999) // fixed length
 		randSuffix     = fmt.Sprintf("%s-%d", time.Now().Format("20060102030405"), randInt)
 		flowIdentifier = fmt.Sprintf("rclone-vault-flow-%s", randSuffix)
 	)
@@ -118,11 +121,12 @@ func (item *batchItem) contentType() string {
 	}
 }
 
+// String will most likely show up in debug messages.
 func (b *batcher) String() string {
 	return "vault batcher"
 }
 
-// Add a single batch item.
+// Add a single item to the batch.
 func (b *batcher) Add(item *batchItem) {
 	b.mu.Lock()
 	b.items = append(b.items, item)
@@ -142,8 +146,8 @@ func (b *batcher) Shutdown() {
 			return
 		}
 		var (
-			// We do not want to be cancelled here; or if, we want to set our
-			// own timeout for deposit uploads.
+			// We do not want to be cancelled in Shutdown; or if we do, we want
+			// to set our own timeout for deposit uploads.
 			ctx             = context.Background()
 			totalSize int64 = 0
 			files     []*api.File
@@ -154,6 +158,7 @@ func (b *batcher) Shutdown() {
 			totalSize += item.src.Size()
 			files = append(files, item.ToFile(ctx))
 		}
+		// TODO: we may want to reuse a deposit to continue an interrupted deposit
 		rdr := &api.RegisterDepositRequest{
 			TotalSize: totalSize,
 			Files:     files,
