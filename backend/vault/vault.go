@@ -78,6 +78,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		UserInfo:                f.UserInfo,
 		Disconnect:              f.Disconnect,
 		DirMove:                 f.DirMove,
+		Purge:                   f.Purge,
 	}
 	return f, nil
 }
@@ -378,6 +379,7 @@ func (f *Fs) UserInfo(ctx context.Context) (map[string]string, error) {
 
 // Disconnect logs out the current user.
 func (f *Fs) Disconnect(ctx context.Context) error {
+	fs.Debugf(f, "disconnect")
 	f.api.Logout()
 	return nil
 }
@@ -385,21 +387,21 @@ func (f *Fs) Disconnect(ctx context.Context) error {
 // DirMove implements server side renames and moves.
 func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string) error {
 	fs.Debugf(f, "dir move: %v [%v] => %v", src.Root(), srcRemote, f.root)
-	srcTreeNode, err := f.api.ResolvePath(src.Root())
+	srcNode, err := f.api.ResolvePath(src.Root())
 	if err != nil {
 		return err
 	}
 	srcDirParent := path.Dir(src.Root())
-	srcDirParentTreeNode, err := f.api.ResolvePath(srcDirParent)
+	srcDirParentNode, err := f.api.ResolvePath(srcDirParent)
 	if err != nil {
 		return err
 	}
 	dstDirParent := path.Dir(f.root)
-	dstDirParentTreeNode, err := f.api.ResolvePath(dstDirParent)
+	dstDirParentNode, err := f.api.ResolvePath(dstDirParent)
 	if err != nil {
 		return err
 	}
-	if srcDirParentTreeNode.Id == dstDirParentTreeNode.Id {
+	if srcDirParentNode.Id == dstDirParentNode.Id {
 		fs.Debugf(f, "move is a rename")
 		t, err := f.api.ResolvePath(src.Root())
 		if err != nil {
@@ -408,13 +410,13 @@ func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string
 		return f.api.Rename(ctx, t, path.Base(f.root))
 	} else {
 		switch {
-		case srcTreeNode.NodeType == "FILE":
+		case srcNode.NodeType == "FILE":
 			// If f.root exists and is a directory, we can move the file in
 			// there; if f.root does not exists, we treat the parent as the dir
 			// and the base as the file to copy to.
-			rootTreeNode, err := f.api.ResolvePath(f.root)
+			rootNode, err := f.api.ResolvePath(f.root)
 			if err == nil {
-				if err := f.api.Move(ctx, srcTreeNode, rootTreeNode); err != nil {
+				if err := f.api.Move(ctx, srcNode, rootNode); err != nil {
 					return err
 				}
 			} else {
@@ -422,27 +424,38 @@ func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string
 				if err := f.mkdir(ctx, dstDir); err != nil {
 					return err
 				}
-				dstDirTreeNode, err := f.api.ResolvePath(dstDir)
+				dstDirNode, err := f.api.ResolvePath(dstDir)
 				if err != nil {
 					return err
 				}
-				if err := f.api.Move(ctx, srcTreeNode, dstDirTreeNode); err != nil {
+				if err := f.api.Move(ctx, srcNode, dstDirNode); err != nil {
 					return err
 				}
 				if path.Base(f.root) != path.Base(src.Root()) {
-					return f.api.Rename(ctx, srcTreeNode, path.Base(f.root))
+					return f.api.Rename(ctx, srcNode, path.Base(f.root))
 				}
 			}
-		case srcTreeNode.NodeType == "FOLDER" || srcTreeNode.NodeType == "COLLECTION":
+		case srcNode.NodeType == "FOLDER" || srcNode.NodeType == "COLLECTION":
 			fs.Debugf(f, "moving dir to %v", f.root)
 			p, err := f.api.ResolvePath(f.root)
 			if err != nil {
 				return err
 			}
-			return f.api.Move(ctx, srcTreeNode, p)
+			return f.api.Move(ctx, srcNode, p)
 		}
 	}
 	return nil
+}
+
+func (f *Fs) Purge(ctx context.Context, dir string) error {
+	t, err := f.api.ResolvePath(f.absPath(dir))
+	if err != nil {
+		return err
+	}
+	if t.NodeType != "FOLDER" {
+		return fmt.Errorf("can only purge folders, not %v", t.NodeType)
+	}
+	return f.api.Remove(ctx, t)
 }
 
 // Fs helpers

@@ -363,7 +363,7 @@ func (api *Api) ResolvePath(p string) (*TreeNode, error) {
 	}
 	// This method only resolves absolute paths. TODO: Should we rather fail?
 	if !strings.HasPrefix(p, "/") {
-		return nil, fmt.Errorf("resolve: absolute path required")
+		p = "/" + p
 	}
 	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
 	segments := strings.Split(strings.TrimRight(p, "/"), "/")[1:]

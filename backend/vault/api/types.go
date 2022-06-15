@@ -326,25 +326,25 @@ type List struct {
 // UserList from API, via JSONGen.
 type UserList struct {
 	List
-	Results []*User `json:"results"`
+	Result []*User `json:"results"`
 }
 
 // OrganizationList contains a list of organizations, e.g. from search.
 type OrganizationList struct {
 	List
-	Results []*Organization `json:"results"`
+	Result []*Organization `json:"results"`
 }
 
 // CollectionList contains a list of collections.
 type CollectionList struct {
 	List
-	Results []*Collection `json:"results"`
+	Result []*Collection `json:"results"`
 }
 
 // TreeNodeList for a list of treenodes.
 type TreeNodeList struct {
 	List
-	Results []*TreeNode `json:"results"`
+	Result []*TreeNode `json:"results"`
 }
 
 // Get methods
@@ -510,7 +510,7 @@ func (api *Api) FindUsers(vs url.Values) (result []*User, err error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("api: users got %v", resp.StatusCode)
 	}
-	for _, v := range doc.Results {
+	for _, v := range doc.Result {
 		result = append(result, v)
 	}
 	api.cache.SetGroup(cache.Atos(vs), "users", result)
@@ -534,13 +534,17 @@ func (api *Api) FindOrganizations(vs url.Values) (result []*Organization, err er
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("api: organizations got %v", resp.StatusCode)
 	}
-	for _, v := range doc.Results {
+	for _, v := range doc.Result {
 		result = append(result, v)
 	}
 	return result, nil
 }
 
 func (api *Api) FindCollections(vs url.Values) (result []*Collection, err error) {
+	if !vs.Has("limit") && !vs.Has("offset") {
+		vs.Set("offset", "0")
+		vs.Set("limit", "5000") // TODO: implement pagination
+	}
 	var (
 		opts = rest.Opts{
 			Method:     "GET",
@@ -557,7 +561,7 @@ func (api *Api) FindCollections(vs url.Values) (result []*Collection, err error)
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("api: collections got %v", resp.StatusCode)
 	}
-	for _, v := range doc.Results {
+	for _, v := range doc.Result {
 		result = append(result, v)
 	}
 	return result, nil
@@ -603,14 +607,9 @@ func (api *Api) FindTreeNodes(vs url.Values) (result []*TreeNode, err error) {
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("api: treenodes got %v", resp.StatusCode)
 	}
-	for _, v := range doc.Results {
+	for _, v := range doc.Result {
 		result = append(result, v)
 	}
-	// We want the next pages, too.
-	if doc.Next != nil {
-		// log.Printf("%T %s", doc, doc.Next)
-	}
-
 	api.cache.SetGroup(cache.Atos(vs), "treenodes", result)
 	return result, nil
 }
