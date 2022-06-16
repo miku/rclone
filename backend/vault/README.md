@@ -351,3 +351,11 @@ a6cfd6fc383e5856da20444a633ee5e4c23b603b27f807459186118035ed2441  d/first.md
 ...
 ```
 
+## TODO
+
+* [ ] issue with `max-depth`
+* [ ] ncdu performance
+* [ ] resumable deposits
+* [ ] cli access to various reports (fixity, ...)
+* [ ] test harness
+
