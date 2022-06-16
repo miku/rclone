@@ -1,10 +1,10 @@
 # Rclone for Vault
 
 Experimental CLI support for Internet Archive Vault Digital Preservation System
-in [Rclone](https://rclone.org/). This is private fork of rclone and
+in [Rclone](https://rclone.org/). This is a private fork of rclone and
 work-in-progress. Glad about any feedback (slack,
 [WT-1168](https://webarchive.jira.com/browse/WT-1168),
-[martin@archive.org](mailto:martin@archive.org), ...):
+[martin@archive.org](mailto:martin@archive.org), ...), especially on:
 
 * bugs
 * unintuitive behaviour
@@ -59,7 +59,7 @@ There is a single configuration file for rclone, located by default under:
 In you rclone config, add the following section for vault (the section name is
 arbitrary; used to refer to the remote).
 
-```
+```ini
 [vault]
 type = vault
 username = admin
@@ -107,7 +107,7 @@ DefaultFixityFrequency: TWICE_YEARLY
 * [x] lsjson
 
 ```shell
-$ rclone ls vault:/ | head -10
+$ rclone ls vault:/
         8 C00/VERSION
         0 C1/abc.txt
      3241 C123/about.go
@@ -118,8 +118,9 @@ $ rclone ls vault:/ | head -10
      2829 C123/copy.go
     10913 C123/help.go
       886 C123/ls.go
+      ...
 
-$ rclone lsl vault:/ | head -10
+$ rclone lsl vault:/
         0 2022-06-08 23:49:10.000000000 C1/abc.txt
         8 2022-05-31 16:17:21.000000000 C00/VERSION
      3241 2022-05-31 17:13:45.000000000 C123/about.go
@@ -130,9 +131,9 @@ $ rclone lsl vault:/ | head -10
      2829 2022-05-31 17:09:35.000000000 C123/copy.go
     10913 2022-05-31 17:27:17.000000000 C123/help.go
       886 2022-05-31 17:06:59.000000000 C123/ls.go
+      ...
 
-
-$ rclone lsf vault:/ | head -10
+$ rclone lsf vault:/
 .Trash-1000/
 C00/
 C1/
@@ -143,8 +144,9 @@ C42/
 C43/
 C50/
 C51/
+...
 
-$ rclone lsd vault:/ | head -10
+$ rclone lsd vault:/
            0 2022-05-31 16:05:24         0 .Trash-1000
            0 2022-05-31 16:17:05         2 C00
            0 2022-06-08 23:49:06         1 C1
@@ -155,10 +157,12 @@ $ rclone lsd vault:/ | head -10
            0 2022-06-08 11:20:18         1 C43
            0 2022-06-08 13:09:09         1 C50
            0 2022-06-08 14:34:18         2 C51
+           ...
 
 $ rclone lsd -R vault:/C40
            0 2022-06-07 15:33:32         1 myblog
            0 2022-06-07 15:33:36         0 myblog/templates
+           ...
 
 $ rclone lsjson vault:/ | head -10
 [
@@ -173,6 +177,53 @@ $ rclone lsjson vault:/ | head -10
 {"Path":"C50","Name":"C50","Size":0,"MimeType":"inode/directory","ModTime":"2022-06-08T11:09:09Z","IsDir":true,"ID":"1.713"},
 ...
 ```
+
+### Listing files and folders as tree
+
+Similar to the linux [tree](https://en.wikipedia.org/wiki/Tree_(command)),
+rclone can render a tree as well. Note that this only starts to render the
+output when all the relevant files have been inspected. Hence this command can
+take a while on large folders.
+
+Options: `-d`, `-s`, ...
+
+```
+$ rclone tree vault:/C100
+/
+├── a
+│   └── myblog
+│       ├── content
+│       │   └── blog
+│       └── templates
+├── b
+│   ├── _index.md
+│   ├── base.html
+│   ├── blog-page.html
+│   ├── blog.html
+│   ├── config.toml
+│   ├── first.md
+│   ├── index.html
+│   ├── second.md
+│   └── xxxx.txt
+├── c
+│   └── myblog
+│       ├── content
+│       │   └── blog
+│       └── templates
+└── d
+    ├── _index.md
+    ├── base.html
+    ├── blog-page.html
+    ├── blog.html
+    ├── config.toml
+    ├── first.md
+    ├── index.html
+    ├── second.md
+    └── xxxx.txt
+
+12 directories, 18 files
+```
+
 
 ### Creating Collections and Folder
 
@@ -192,7 +243,7 @@ they do not exist:
 $ rclone mkdir vault:/X2/a/b/c
 ```
 
-### Uploading single files and trees
+### Uploading single files and directories
 
 * [x] copy
 * [x] copyto
@@ -220,11 +271,11 @@ Sync is similar to copy, can be used to successively sync file to vault.
 $ rclone sync ~/tmp/somedir vault:/ExampleCollection/somedir
 ```
 
-### Downloading files and trees
+### Downloading files and folders
 
 * [x] copy
 
-Copy can be used to copy a file or tree from vault to local disk.
+Copy can be used to copy a file or folder from vault to local disk.
 
 ```
 $ rclone copy vault:/ExampleCollection/somedir ~/tmp/somecopy
@@ -236,5 +287,51 @@ $ rclone copy vault:/ExampleCollection/somedir ~/tmp/somecopy
 
 ```
 $ rclone cat vault:/ExampleCollection/somedir/f.txt
+```
+
+### Deleting files and folders
+
+* [x] delete, deletefile
+
+```
+$ rclone delete vault:/C123/a/f.txt
+```
+
+A whole folder or collection can be deleted as well.
+
+```
+$ rclone delete vault:/C123
+```
+
+### Show disk usage
+
+Similar to [ncdu](https://en.wikipedia.org/wiki/Ncdu), rclone can show what dirs consume most disk space.
+
+```
+$ rclone ncdu vault:/
+```
+
+Works for folders as well. Running this against large collections may take a while.
+
+### Listing hashes
+
+Vault keeps track of MD5, SHA1 and SHA256 of objects and rclone is natively interested in those.
+
+```
+$ rclone md5sum vault:/
+d41d8cd98f00b204e9800998ecf8427e  C103/testing-touch.txt
+127a60cc6951b43d8ec9f2fbc566f53d  C102/base.org
+d6c43639164bd159609fde47ae1477cc  C102/uuuu.txt
+2b26b72ff91209f42e05a69c5bbff249  240/magentacloud.zip
+c4b44a7043b45e0e03664827874739c9  240/Zwyns_Lbova_2018.pdf
+275cc2f7f947d45c8a632dab13a8522c  240/midas.pdf
+...
+
+$ rclone sha1sum vault:/C100
+a2b0031c595250996b9fd671ba543a5178a86c02  d/blog.html
+e38c7b27a15bb492766686bc61cf27765f34f97e  d/base.html
+785096246f488bce480e8fadcd7d4e7863c08773  d/config.toml
+f1e73ce9cd4ec3e1860213c707faa0d05234b222  d/_index.md
+be3ad0ee54239c370d616b60f02736dd10137dc7  d/second.md
 ```
 
