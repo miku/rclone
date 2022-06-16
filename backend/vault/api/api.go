@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -156,7 +155,7 @@ func (api *Api) Login() (err error) {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		b, _ := ioutil.ReadAll(resp.Body)
-		log.Println(string(b))
+		fs.LogPrintf(fs.LogLevelError, api, string(b))
 		return fmt.Errorf("login failed with: %v", resp.StatusCode)
 	}
 	api.client.SetCookie(jar.Cookies(u)...)
