@@ -10,7 +10,6 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -35,9 +34,9 @@ var (
 	ErrAmbiguousQuery = errors.New("ambiguous query")
 )
 
-// Api wraps the vault API. Django REST Framework has some support for export a
-// swagger definition, which we may switch over at some point (it was not
-// enabled). Most operations will require an authenticated client.
+// Api wraps the Vault API. Django REST Framework has some support for swagger
+// definitions, which we may switch over at some point (it was not enabled).
+// Most operations will require an authenticated client.
 type Api struct {
 	Endpoint string
 	Username string
@@ -211,6 +210,39 @@ func (api *Api) SplitPath(p string) (*PathInfo, error) {
 	return &pi, nil
 }
 
+// ResolvePath resolves an absolute path to a treenode object.
+func (api *Api) ResolvePath(p string) (*TreeNode, error) {
+	t, err := api.root()
+	if err != nil {
+		return nil, err
+	}
+	// This method only resolves absolute paths. TODO: Should we rather fail?
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
+	segments := strings.Split(strings.TrimRight(p, "/"), "/")[1:]
+	if p != "" && p != "/" && len(segments) == 0 {
+		return nil, fs.ErrorObjectNotFound
+	}
+	for len(segments) > 0 {
+		ts, err := api.FindTreeNodes(url.Values{
+			"parent": []string{fmt.Sprintf("%d", t.Id)},
+			"name":   []string{segments[0]},
+		})
+		switch {
+		case err != nil:
+			return nil, err
+		case len(ts) == 0:
+			return nil, fs.ErrorObjectNotFound
+		case len(ts) > 1:
+			return nil, ErrAmbiguousQuery
+		}
+		t, segments = ts[0], segments[1:]
+	}
+	return t, nil
+}
+
 // DepositStatus returns information about a specific deposit.
 func (api *Api) DepositStatus(id int64) (*DepositStatus, error) {
 	opts := rest.Opts{
@@ -247,8 +279,7 @@ func (api *Api) CreateCollection(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	return nil
+	return resp.Body.Close()
 }
 
 // CreateFolder creates a folder below a given parent treenode.
@@ -273,8 +304,7 @@ func (api *Api) CreateFolder(ctx context.Context, parent *TreeNode, name string)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	return nil
+	return resp.Body.Close()
 }
 
 // Rename updates name of a treenode.
@@ -297,8 +327,7 @@ func (api *Api) Rename(ctx context.Context, t *TreeNode, name string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	return nil
+	return resp.Body.Close()
 }
 
 // Move sets the new parent of t to newParent.
@@ -321,8 +350,7 @@ func (api *Api) Move(ctx context.Context, t, newParent *TreeNode) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	return nil
+	return resp.Body.Close()
 }
 
 // Remove a treenode.
@@ -340,8 +368,7 @@ func (api *Api) Remove(ctx context.Context, t *TreeNode) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	return nil
+	return resp.Body.Close()
 }
 
 // List returns the immediate children of a treenode.
@@ -352,39 +379,6 @@ func (api *Api) List(t *TreeNode) ([]*TreeNode, error) {
 	return api.FindTreeNodes(url.Values{
 		"parent": []string{fmt.Sprintf("%d", t.Id)},
 	})
-}
-
-// ResolvePath resolves an absolute path to a treenode object.
-func (api *Api) ResolvePath(p string) (*TreeNode, error) {
-	t, err := api.root()
-	if err != nil {
-		return nil, err
-	}
-	// This method only resolves absolute paths. TODO: Should we rather fail?
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	// segments: /a/b/c -> [a b c], /a/b/ -> [a b]
-	segments := strings.Split(strings.TrimRight(p, "/"), "/")[1:]
-	if p != "" && p != "/" && len(segments) == 0 {
-		return nil, fs.ErrorObjectNotFound
-	}
-	for len(segments) > 0 {
-		ts, err := api.FindTreeNodes(url.Values{
-			"parent": []string{strconv.Itoa(int(t.Id))},
-			"name":   []string{segments[0]},
-		})
-		switch {
-		case err != nil:
-			return nil, err
-		case len(ts) == 0:
-			return nil, fs.ErrorObjectNotFound
-		case len(ts) > 1:
-			return nil, ErrAmbiguousQuery
-		}
-		t, segments = ts[0], segments[1:]
-	}
-	return t, nil
 }
 
 // RegisterDeposit sends a RegisterDepositRequest to the API and returns the deposit id.
@@ -473,9 +467,6 @@ func (api *Api) csrfToken(ctx context.Context) string {
 		return ""
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return ""
-	}
 	b, err := ioutil.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
 		return ""
