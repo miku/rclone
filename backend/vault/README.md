@@ -359,3 +359,7 @@ a6cfd6fc383e5856da20444a633ee5e4c23b603b27f807459186118035ed2441  d/first.md
 * [ ] cli access to various reports (fixity, ...)
 * [ ] test harness
 
+
+## Forum
+
+* [https://forum.rclone.org/t/support-for-returning-and-error-from-atexit-handlers-and-batch-uploads/31336](https://forum.rclone.org/t/support-for-returning-and-error-from-atexit-handlers-and-batch-uploads/31336)
