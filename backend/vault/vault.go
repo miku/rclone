@@ -487,7 +487,12 @@ type Object struct {
 // Object DirEntry
 // ---------------
 
-func (o *Object) String() string { return fmt.Sprintf("object at %v", o.remote) }
+func (o *Object) String() string {
+	if o == nil {
+		return "<nil>"
+	}
+	return o.remote
+}
 func (o *Object) Remote() string { return o.remote }
 func (o *Object) ModTime(ctx context.Context) time.Time {
 	epoch := time.Unix(0, 0)
@@ -526,6 +531,8 @@ func (o *Object) Hash(ctx context.Context, ty hash.Type) (string, error) {
 			return v, nil
 		}
 	}
+	// TODO: we may want hash.ErrUnsupported, but we get an err, via:
+	// https://github.com/rclone/rclone/blob/c85fbebce6f7166350c79e11fae763c8264ef865/fs/operations/operations.go#L105
 	return "", nil
 }
 func (o *Object) Storable() bool { return true }
