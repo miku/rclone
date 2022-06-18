@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"path"
 	"strings"
 	"sync"
@@ -459,6 +460,11 @@ func (f *Fs) Purge(ctx context.Context, dir string) error {
 	return f.api.Remove(ctx, t)
 }
 
+func (f *Fs) Shutdown(ctx context.Context) error {
+	log.Println("shutdown")
+	return nil
+}
+
 // Fs helpers
 // ----------
 
@@ -630,7 +636,9 @@ var (
 	_ fs.Fs           = (*Fs)(nil)
 	_ fs.PublicLinker = (*Fs)(nil)
 	_ fs.PutStreamer  = (*Fs)(nil)
+	_ fs.Shutdowner   = (*Fs)(nil)
 	_ fs.UserInfoer   = (*Fs)(nil)
+	_ fs.Disconnecter = (*Fs)(nil)
 	_ fs.MimeTyper    = (*Object)(nil)
 	_ fs.Object       = (*Object)(nil)
 	_ fs.IDer         = (*Object)(nil)
