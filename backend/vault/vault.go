@@ -68,7 +68,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		opt:  opt,
 		api:  api,
 	}
-	f.features = &fs.Features{
+	f.features = (&fs.Features{
 		CaseInsensitive:         true,
 		CanHaveEmptyDirectories: true,
 		ReadMimeType:            true,
@@ -79,7 +79,8 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		Disconnect:              f.Disconnect,
 		DirMove:                 f.DirMove,
 		Purge:                   f.Purge,
-	}
+		Shutdown:                f.Shutdown,
+	}).Fill(ctx, f)
 	return f, nil
 }
 
