@@ -25,13 +25,13 @@ import (
 
 // batcher is used to group files for a deposit.
 type batcher struct {
-	fs           *Fs             // fs.root will be the parent collection or folder
-	atexit       atexit.FnHandle // callback
-	parent       *api.TreeNode   // resolved and possibly new parent treenode
-	shutOnce     sync.Once       // only batch wrap up once
-	mu           sync.Mutex      // protect items
-	items        []*batchItem    // file metadata and content for deposit items
-	showProgress bool            // show progress bar
+	fs                  *Fs             // fs.root will be the parent collection or folder
+	atexit              atexit.FnHandle // callback
+	parent              *api.TreeNode   // resolved and possibly new parent treenode
+	shutOnce            sync.Once       // only batch wrap up once
+	mu                  sync.Mutex      // protect items
+	items               []*batchItem    // file metadata and content for deposit items
+	showDepositProgress bool            // show progress bar
 }
 
 // newBatcher creates a new batcher, which will execute most code at rclone
@@ -182,7 +182,7 @@ func (b *batcher) Shutdown() {
 			log.Fatalf("deposit failed: %v", err)
 		}
 		fs.Debugf(b, "created deposit %v", depositId)
-		if b.showProgress {
+		if b.showDepositProgress {
 			bar = progressbar.DefaultBytes(totalSize, "<5>NOTICE: depositing")
 		}
 		for i, item := range b.items {

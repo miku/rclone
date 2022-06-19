@@ -226,7 +226,7 @@ func (f *Fs) Put(ctx context.Context, in io.Reader, src fs.ObjectInfo, options .
 		if err != nil {
 			return nil, err
 		}
-		f.batcher.showProgress = true
+		f.batcher.showDepositProgress = true
 	}
 	f.mu.Unlock()
 	// TODO: with retries, we may add the same object twice or more; check that
