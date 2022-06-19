@@ -337,7 +337,6 @@ $ rclone sha1sum vault:/C100
 a2b0031c595250996b9fd671ba543a5178a86c02  d/blog.html
 e38c7b27a15bb492766686bc61cf27765f34f97e  d/base.html
 785096246f488bce480e8fadcd7d4e7863c08773  d/config.toml
-f1e73ce9cd4ec3e1860213c707faa0d05234b222  d/_index.md
 be3ad0ee54239c370d616b60f02736dd10137dc7  d/second.md
 ...
 
@@ -345,7 +344,6 @@ $ rclone hashsum sha256 vault:/C100
 59739d7135e335183b260fa83428df7d2fba108f8398a4a21ef1da706315f2f1  d/blog.html
 3aafe178d8e5bb9994bc2ecc0feb92eb63adc3023fdf0901c10bbe906542d05b  d/base.html
 0d0a57a6ecb72d8f9fffb6b092037a99490d1fe20a30675b29caa0e24008dd28  d/blog-page.html
-dbd04f962bb0096cdc78a5f8c0249b28afa4e1788815b3c527dcd1300345993b  d/_index.md
 a6cfd6fc383e5856da20444a633ee5e4c23b603b27f807459186118035ed2441  d/first.md
 4d3eedec138894549365ce82b54e39c79af7da4146d4d39855756623c5aad8e5  d/second.md
 ...
@@ -365,4 +363,14 @@ a6cfd6fc383e5856da20444a633ee5e4c23b603b27f807459186118035ed2441  d/first.md
 Trying to move from "atexit" to "Shutdown", but that would require additional
 changes, discussing it here:
 [https://forum.rclone.org/t/support-for-returning-and-error-from-atexit-handlers-and-batch-uploads/31336](https://forum.rclone.org/t/support-for-returning-and-error-from-atexit-handlers-and-batch-uploads/31336)
+
+
+## Review (MW) Notes
+
+> ls --max-depth={1,2,..} are producing unexpected results: ...
+
+The [ls](https://rclone.org/commands/rclone_ls/) subcommand lists size and path
+of **objects only** - our root is the organization, the first level are
+COLLECTION items, there is no FILE that has a an ORG as a parent
+
 
