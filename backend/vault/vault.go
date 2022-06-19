@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"path"
 	"strings"
 	"sync"
@@ -461,7 +460,7 @@ func (f *Fs) Purge(ctx context.Context, dir string) error {
 }
 
 func (f *Fs) Shutdown(ctx context.Context) error {
-	log.Println("shutdown")
+	fs.Debugf(f, "shutdown")
 	return nil
 }
 
